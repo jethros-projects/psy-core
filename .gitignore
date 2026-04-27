@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.psy/
+.psy.json
+.gstack/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+.DS_Store

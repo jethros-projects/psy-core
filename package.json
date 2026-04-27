@@ -1,0 +1,147 @@
+{
+  "name": "psy-core",
+  "version": "0.3.3",
+  "description": "Tamper-evident audit log for AI agent memory operations. Adapters for Anthropic Memory, Letta, Mastra, Mem0, LangChain, and LangGraph.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/jethros-projects/psy-core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jethros-projects/psy-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jethros-projects/psy-core/issues"
+  },
+  "author": "jethros-projects",
+  "keywords": [
+    "audit",
+    "audit-log",
+    "tamper-evident",
+    "ai-agent",
+    "llm",
+    "memory",
+    "anthropic",
+    "letta",
+    "mastra",
+    "mem0",
+    "langchain",
+    "langgraph",
+    "observability",
+    "governance"
+  ],
+  "bin": {
+    "psy": "dist/cli.js"
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./anthropic-memory": {
+      "types": "./dist/anthropic-memory/index.d.ts",
+      "import": "./dist/anthropic-memory/index.js"
+    },
+    "./letta": {
+      "types": "./dist/letta/index.d.ts",
+      "import": "./dist/letta/index.js"
+    },
+    "./mastra": {
+      "types": "./dist/mastra/index.d.ts",
+      "import": "./dist/mastra/index.js"
+    },
+    "./mem0": {
+      "types": "./dist/mem0/index.d.ts",
+      "import": "./dist/mem0/index.js"
+    },
+    "./langchain": {
+      "types": "./dist/langchain/index.d.ts",
+      "import": "./dist/langchain/index.js"
+    },
+    "./langgraph": {
+      "types": "./dist/langgraph/index.d.ts",
+      "import": "./dist/langgraph/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "examples",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:node && npm run test:vitest",
+    "test:node": "node --import tsx --test tests/canonical.test.ts tests/hash-chain.test.ts tests/rotation.test.ts tests/store.test.ts tests/verify.test.ts",
+    "test:vitest": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": ">=0.91.1",
+    "@types/semver": "^7.7.1",
+    "better-sqlite3": "^12.9.0",
+    "canonicalize": "^3.0.0",
+    "commander": "^14.0.3",
+    "picocolors": "^1.1.1",
+    "semver": "^7.7.4",
+    "uuid": "^14.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.39",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.91.1",
+    "@langchain/core": ">=1 <2",
+    "@langchain/langgraph": ">=1 <2",
+    "@langchain/langgraph-checkpoint": ">=1 <2",
+    "@letta-ai/letta-client": ">=1.10 <2",
+    "@mastra/core": ">=1.28 <2",
+    "@mastra/memory": ">=1.17 <2",
+    "mem0ai": ">=3 <4"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    },
+    "@langchain/langgraph": {
+      "optional": true
+    },
+    "@langchain/langgraph-checkpoint": {
+      "optional": true
+    },
+    "@letta-ai/letta-client": {
+      "optional": true
+    },
+    "@mastra/core": {
+      "optional": true
+    },
+    "@mastra/memory": {
+      "optional": true
+    },
+    "mem0ai": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
