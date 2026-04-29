@@ -63,7 +63,14 @@ Issues = "https://github.com/jethros-projects/psy-core/issues"
 Changelog = "https://github.com/jethros-projects/psy-core/blob/main/CHANGELOG.md"
 
 [project.entry-points."hermes_agent.plugins"]
-psy = "psy_hermes.register:register"
+# Hermes's PluginManager loader does `ep.load()` and then looks up
+# `register` on the returned object. That means the entry-point value
+# must point at the MODULE (so `ep.load()` returns the module, and
+# `getattr(module, "register")` resolves to our function), not at the
+# function attribute. Verified against hermes-agent v0.11.0 at
+# hermes_cli/plugins.py: `_load_entrypoint_module` returns `ep.load()`,
+# `_load_plugin` calls `getattr(module, "register", None)`.
+psy = "psy_hermes.register"
 
 [project.scripts]
 psy-hermes = "psy_hermes.cli:main"

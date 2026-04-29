@@ -121,19 +121,28 @@ def _operation_for(tool_name: str, args: dict[str, Any]) -> str | None:
 
 
 def _memory_path_for(tool_name: str, args: dict[str, Any]) -> str:
-    """Best-effort path string. Used for the audit row's `memory_path` column."""
+    """Best-effort path string. Used for the audit row's `memory_path` column.
+
+    Mapped against the real Hermes v0.11 tool schemas:
+      - memory: required args are `{action, target, content?, old_text?}`,
+        where `target` ∈ {"memory", "user"} and writes land in MEMORY.md or
+        USER.md respectively.
+      - skill_manage: required args are `{action, name, ...}`, where `name`
+        is the skill key. `file_path` is an optional sub-path under the
+        skill directory used by `write_file` / `remove_file` / `patch`.
+    """
     if tool_name == "memory":
-        target = args.get("path") or args.get("file") or args.get("name")
-        if target:
-            return f"/memories/{target}"
-        # Hermes memory tool default: writes go to MEMORY.md.
+        target = args.get("target")
+        if target == "user":
+            return "/memories/USER.md"
+        # Default ("memory" target, or unspecified) writes to MEMORY.md.
         return "/memories/MEMORY.md"
     if tool_name == "skill_manage":
-        skill = args.get("skill") or args.get("name") or "<unknown>"
-        path = args.get("path") or args.get("file")
-        if path:
-            return f"/skills/{skill}/{path}"
-        return f"/skills/{skill}"
+        skill = args.get("name") or "<unknown>"
+        file_path = args.get("file_path")
+        if file_path:
+            return f"/skills/{skill}/{file_path}"
+        return f"/skills/{skill}/SKILL.md"
     return "/memories"
 
 

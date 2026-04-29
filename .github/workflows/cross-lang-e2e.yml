@@ -68,3 +68,67 @@ jobs:
         working-directory: python/psy-hermes
         run: |
           echo '{"type":"intent","operation":"create","call_id":"py-1"}' | .venv/bin/psy-hermes dry-run
+
+      # Live integration test: install hermes-agent from upstream, drive
+      # plugin discovery + hook invocation through the real PluginManager,
+      # then assert the captured envelopes have the right shape.
+      - name: clone hermes-agent (real plugin host)
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          path: hermes-agent
+          ref: v0.11.0
+      - name: install hermes-agent without runtime deps
+        working-directory: python/psy-hermes
+        run: |
+          # We don't need anthropic/openai/etc. — only the plugin manager.
+          .venv/bin/pip install ../../hermes-agent --no-deps
+      - name: drive real Hermes plugin discovery + hook invocation
+        working-directory: python/psy-hermes
+        run: |
+          .venv/bin/python <<'PY'
+          import os, tempfile, textwrap
+          from pathlib import Path
+          tmp = Path(tempfile.mkdtemp(prefix='live-'))
+          os.environ['HERMES_HOME'] = str(tmp)
+          (tmp / 'config.yaml').write_text(textwrap.dedent('''
+          plugins:
+            enabled: [psy]
+            psy:
+              enabled: true
+              actor_id: alice@acme.com
+              tenant_id: acme
+              psy_binary: /bin/echo
+          '''))
+          from hermes_cli import plugins as hp
+          mgr = hp.get_plugin_manager()
+          mgr.discover_and_load()
+          loaded = mgr._plugins.get('psy')
+          assert loaded and loaded.enabled, f'psy did not load cleanly: {loaded.error if loaded else "missing"}'
+          assert 'pre_tool_call' in mgr._hooks
+          assert 'post_tool_call' in mgr._hooks
+          # Replace ingest with a fake so we don't spawn `psy` here.
+          from psy_hermes.hooks import HookHandlers
+          handlers = next(fn.__self__ for fn in mgr._hooks['pre_tool_call']
+                          if hasattr(fn, '__self__') and isinstance(fn.__self__, HookHandlers))
+          captured = []
+          class FakeIngest:
+              def send(self, e): captured.append(e); return True
+              def close(self): pass
+          handlers.ingest = FakeIngest()
+          hp.invoke_hook('pre_tool_call', tool_name='memory',
+                         args={'action':'add','target':'user','content':'x'},
+                         tool_call_id='c1', session_id='s1')
+          hp.invoke_hook('pre_tool_call', tool_name='skill_manage',
+                         args={'action':'patch','name':'demo','old_string':'a','new_string':'b'},
+                         tool_call_id='c2', session_id='s1')
+          hp.invoke_hook('post_tool_call', tool_name='skill_manage',
+                         args={'action':'patch','name':'demo','old_string':'a','new_string':'b'},
+                         tool_call_id='c2', session_id='s1', result='patched')
+          assert len(captured) == 3, captured
+          assert captured[0]['memory_path'] == '/memories/USER.md'
+          assert captured[1]['memory_path'] == '/skills/demo/SKILL.md'
+          assert captured[1]['operation'] == 'str_replace'
+          assert captured[2]['type'] == 'result'
+          print('OK: live integration test passed against hermes-agent v0.11.0')
+          PY

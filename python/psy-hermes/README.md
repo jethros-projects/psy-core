@@ -134,6 +134,33 @@ psy verify --all   # full chain integrity check + sealed-tail verify
 
 The TS-side `psy verify` reads `~/.psy/audit.db`, walks the hash chain, validates the HMAC seal, and exits non-zero on any tampering.
 
+### Verified against hermes-agent v0.11.0
+
+The plugin contract was source-verified against
+[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at
+v0.11.0:
+
+- Entry-point group is `hermes_agent.plugins`; the loader does
+  `ep.load()` and then `getattr(module, "register")`, so our entry-point
+  value is the **module path** `psy_hermes.register` (not the `module:attr`
+  form — that returns the function from `ep.load()` and breaks the
+  `getattr(module, "register")` lookup).
+- `_AGENT_LOOP_TOOLS = {"todo", "memory", "session_search", "delegate_task"}`
+  — confirmed `memory` bypasses `post_tool_call`; we use the filesystem
+  watcher to confirm result envelopes for memory writes.
+- `memory` tool args: `{action, target, content, old_text}` where
+  `target ∈ {"memory", "user"}` maps to `MEMORY.md` / `USER.md`.
+- `skill_manage` args: `{action, name, content?, old_string?, new_string?,
+  file_path?, file_content?, ...}`. Skill key is `name`; `file_path` is
+  the optional sub-path under the skill directory.
+- Hook callback signature: keyword-only
+  `(*, tool_name, args, task_id, session_id, tool_call_id, **_)`.
+- `hermes_cli.config.load_config()` returns the parsed YAML as a dict.
+
+A live integration test that loads our plugin into a real Hermes
+`PluginManager` and asserts captured envelopes is part of the e2e
+workflow at `.github/workflows/cross-lang-e2e.yml`.
+
 ## License
 
 MIT

@@ -9,9 +9,11 @@ from psy_hermes.hooks import _MEMORY_ACTION_MAP, HookHandlers
 
 
 def test_pre_tool_call_emits_intent_for_memory_add(hooks: HookHandlers, fake_ingest: Any) -> None:
+    # Real Hermes memory tool args: {action, target, content?, old_text?}
+    # where target ∈ {"memory","user"}.
     hooks.pre_tool_call(
         tool_name="memory",
-        args={"action": "add", "content": "hello"},
+        args={"action": "add", "target": "memory", "content": "hello"},
         tool_call_id="call-1",
         session_id="sess-1",
     )
@@ -23,8 +25,46 @@ def test_pre_tool_call_emits_intent_for_memory_add(hooks: HookHandlers, fake_ing
     assert env["identity"]["actor_id"] == "alice@acme.com"
     assert env["identity"]["tenant_id"] == "acme"
     assert env["identity"]["session_id"] == "sess-1"
-    assert env["memory_path"].startswith("/memories/")
+    assert env["memory_path"] == "/memories/MEMORY.md"
     assert env["payload"]["tool"] == "memory"
+
+
+def test_pre_tool_call_routes_user_target_to_user_md(hooks: HookHandlers, fake_ingest: Any) -> None:
+    hooks.pre_tool_call(
+        tool_name="memory",
+        args={"action": "add", "target": "user", "content": "alice prefers email"},
+        tool_call_id="call-user",
+    )
+    assert fake_ingest.sent[-1]["memory_path"] == "/memories/USER.md"
+
+
+def test_pre_tool_call_routes_skill_manage_to_skill_md(
+    hooks: HookHandlers, fake_ingest: Any,
+) -> None:
+    hooks.pre_tool_call(
+        tool_name="skill_manage",
+        args={"action": "create", "name": "deploy-runbook", "content": "..."},
+        tool_call_id="skill-create",
+    )
+    env = fake_ingest.sent[-1]
+    assert env["operation"] == "create"
+    assert env["memory_path"] == "/skills/deploy-runbook/SKILL.md"
+
+
+def test_pre_tool_call_uses_file_path_for_subfile_writes(
+    hooks: HookHandlers, fake_ingest: Any,
+) -> None:
+    hooks.pre_tool_call(
+        tool_name="skill_manage",
+        args={
+            "action": "write_file",
+            "name": "deploy-runbook",
+            "file_path": "references/example.md",
+            "file_content": "x",
+        },
+        tool_call_id="skill-wf",
+    )
+    assert fake_ingest.sent[-1]["memory_path"] == "/skills/deploy-runbook/references/example.md"
 
 
 def test_pre_tool_call_skips_unrelated_tools(hooks: HookHandlers, fake_ingest: Any) -> None:
@@ -35,7 +75,8 @@ def test_pre_tool_call_skips_unrelated_tools(hooks: HookHandlers, fake_ingest: A
 def test_pre_tool_call_skips_when_action_unknown(hooks: HookHandlers, fake_ingest: Any) -> None:
     hooks.pre_tool_call(
         tool_name="memory",
-        args={"action": "list"},  # not a write
+        # An action outside the write set must be skipped.
+        args={"action": "nonexistent_action", "target": "memory"},
         tool_call_id="call-2",
     )
     assert fake_ingest.sent == []
