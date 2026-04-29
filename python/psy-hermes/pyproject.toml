@@ -110,6 +110,13 @@ ignore = [
   "B017",
   "E501",
   "PLW2901",
+  # Tests intentionally call subprocess.run without check= so we can
+  # examine returncode + stderr in the assertion. Adding check=True would
+  # turn a failure into a CalledProcessError and lose the diagnostic.
+  "PLW1510",
+  # Comments use `×` (multiplication sign) for matrices like
+  # `action × target`. The look-alike check is noise here.
+  "RUF003",
 ]
 
 [tool.pytest.ini_options]
