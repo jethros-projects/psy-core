@@ -36,11 +36,26 @@ Every memory mutation Hermes exposes, mapped to psy-core's canonical operation v
 
 Every mutation produces a paired intent + result row, the same shape as every other psy-core adapter.
 
-## Scope (and what's deliberately out of scope)
+## Hermes memory surface — what's captured and what's not
 
-`psy-hermes` is **memory-only** in v0.4. Tool call telemetry (terminal, web search, MCP), LLM call telemetry (`pre_llm_call` / `post_llm_call`), session lifecycle (`on_session_start`/`end`/`finalize`/`reset`), and subagent stops are not subscribed. They return as separate scopes (e.g. `psy-hermes-cost`, `psy-hermes-llm`) if user demand surfaces.
+Hermes has more than one kind of memory. v0.4 deliberately covers the file-backed `memory` tool plus `skill_manage`, and explicitly stays out of the way of everything else. The boundary is pinned by tests at `tests/test_real_hermes.py`.
 
-We also do not capture writes for which Hermes exposes no hook — SessionDB summaries, trajectory JSONL writes, `flush_memories()`, and gateway transport events. These would each require an upstream Hermes PR.
+| # | Surface | Hookable? | v0.4 |
+|---|---|:---:|:---:|
+| 1 | `memory` tool — `add/replace/remove × {memory,user}` writing MEMORY.md / USER.md | ✅ via `pre_tool_call` + filesystem watcher | **Captured** |
+| 2 | `skill_manage` tool — SKILL.md + sub-files | ✅ via `pre_tool_call` + `post_tool_call` | **Captured** |
+| 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` (verified at `run_agent.py:9051`'s `_invoke_tool` block — the hook fires before `memory_manager.handle_tool_call`) | **Not captured** in v0.4. Write-tool capture is the single largest v0.5 candidate; turn-on is one allowlist edit. |
+| 4 | MemoryProvider lifecycle hooks (`sync_turn`, `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `on_delegation`) | Subclass-only — `MemoryManager.add_provider` is single-select, so subclassing locks the user out of running Honcho/Mem0/Hindsight alongside psy | Out of scope (architectural — would require psy-hermes to BE the user's MemoryProvider, which the plan explicitly rejected) |
+| 5 | `session_search` (read-only SessionDB query) | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`, no post) | Not captured (read-only) |
+| 6 | `todo` tool | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`) | Not captured (not memory) |
+| 7 | SessionDB writes (cross-session summaries) | ❌ no upstream hook | Out of scope (would need an upstream PR) |
+| 8 | Trajectory JSONL writes | ❌ no upstream hook | Out of scope (would need an upstream PR) |
+| 9 | `flush_memories()` auxiliary writes | ❌ no upstream hook | Out of scope (would need an upstream PR) |
+| 10 | Gateway transport events | Separate `gateway/hooks.py` registry | Separate adapter scope |
+
+Note on #3 ↔ #1: at `run_agent.py:9098`, when the file-backed `memory` tool runs, Hermes also calls `memory_manager.on_memory_write(...)` so any active external MemoryProvider can mirror the write semantically. That makes psy-hermes (audit) and Honcho/Mem0 (semantic recall) **complementary observers of the same write**, not competing writers — they're additive.
+
+If you need Mem0/Letta/LangChain memory audited at the API level (rather than via Hermes's tool dispatch), psy-core ships dedicated adapters for those frameworks; see the [adapter table in the root README](../../README.md#supported-memory-frameworks).
 
 ## Identity
 

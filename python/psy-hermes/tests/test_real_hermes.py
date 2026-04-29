@@ -727,3 +727,240 @@ def test_real_psy_ingest_chain_advances_seal(
         ["psy", "verify", "--no-color"], cwd=psy_root, capture_output=True, text=True
     )
     assert verify.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Memory surface boundary — pins down which memory types v0.4 captures
+# ---------------------------------------------------------------------------
+#
+# Hermes has many memory surfaces beyond the file-backed `memory` tool:
+#
+#   1. memory tool (MEMORY.md / USER.md)         — captured ✅
+#   2. skill_manage tool (SKILL.md)              — captured ✅
+#   3. MemoryProvider plugins (Honcho, Mem0,     — NOT captured in v0.4
+#      Hindsight, Byterover, Holographic,          (deliberate scope decision;
+#      OpenViking, RetainDB, Supermemory) —        the user's choice of provider
+#      each exposes its own tool names that         is single-select via
+#      DO go through pre_tool_call (verified at     MemoryManager.add_provider,
+#      run_agent.py:9051's _invoke_tool block).     and we don't subclass it)
+#   4. session_search                            — NOT captured (read-only)
+#   5. todo                                      — NOT captured (not memory)
+#   6. SessionDB writes                          — no upstream hook
+#   7. Trajectory JSONL writes                   — no upstream hook
+#   8. flush_memories()                          — no upstream hook
+#   9. Gateway transport events                  — separate hook system
+#
+# The tests below assert the boundary so future code changes that
+# accidentally start emitting envelopes for the un-captured surfaces fail
+# loud rather than silently expand scope.
+
+#: Names of write-y tools exposed by every bundled MemoryProvider in
+#: hermes-agent v0.11.0 (sourced by inspecting plugins/memory/*/__init__.py).
+#: When v0.5 adds MemoryProvider observability, these are the names to
+#: turn on. Until then, our v0.4 plugin must NOT emit envelopes for them.
+MEMORY_PROVIDER_WRITE_TOOLS: list[str] = [
+    # Honcho
+    "honcho_conclude",
+    # Mem0
+    "mem0_conclude",
+    # Hindsight
+    "hindsight_retain",
+    "hindsight_reflect",
+    # Holographic
+    "fact_store",
+    # OpenViking
+    "viking_remember",
+    "viking_add_resource",
+    # RetainDB
+    "retaindb_remember",
+    "retaindb_ingest_file",
+    "retaindb_upload_file",
+    "retaindb_forget",
+    "retaindb_delete_file",
+    # Supermemory
+    "supermemory_store",
+    "supermemory_forget",
+    # Byterover
+    "brv_curate",
+]
+
+#: Read-y tools exposed by MemoryProviders. Reads also go through
+#: pre_tool_call but are out of scope for memory-write auditing.
+MEMORY_PROVIDER_READ_TOOLS: list[str] = [
+    "honcho_search", "honcho_profile", "honcho_context", "honcho_reasoning",
+    "mem0_search", "mem0_profile",
+    "hindsight_recall",
+    "fact_feedback",
+    "viking_search", "viking_browse", "viking_read",
+    "retaindb_search", "retaindb_profile", "retaindb_context",
+    "retaindb_list_files", "retaindb_read_file",
+    "supermemory_search", "supermemory_profile",
+    "brv_query", "brv_status",
+]
+
+
+@pytest.mark.parametrize("tool_name", MEMORY_PROVIDER_WRITE_TOOLS)
+def test_memory_provider_write_tools_are_not_captured_in_v04(
+    hermes_home: Path, tool_name: str,
+) -> None:
+    """Every MemoryProvider write-tool must produce ZERO envelopes in v0.4.
+
+    These tools DO go through Hermes's pre_tool_call (verified — they
+    dispatch through ``_invoke_tool`` which fires the hook before
+    ``memory_manager.handle_tool_call``). The v0.4 plugin filters them
+    out by tool name; this test pins that boundary so accidental
+    expansion (e.g. switching to a denylist) fails loud.
+    """
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name=tool_name,
+        args={"content": "anything", "metadata": {"source": "user"}},
+        tool_call_id=f"prov-{tool_name}",
+        session_id="s1",
+    )
+    mgr.invoke_hook(
+        "post_tool_call",
+        tool_name=tool_name,
+        args={"content": "anything"},
+        result="stored",
+        tool_call_id=f"prov-{tool_name}",
+        session_id="s1",
+    )
+    assert handlers.ingest.sent == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("tool_name", MEMORY_PROVIDER_READ_TOOLS)
+def test_memory_provider_read_tools_are_not_captured(
+    hermes_home: Path, tool_name: str,
+) -> None:
+    """Read-y MemoryProvider tools (search/recall/profile) are not memory
+    writes, so they must produce no envelopes — even if v0.5 adds
+    write-tool capture they should still stay quiet."""
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name=tool_name,
+        args={"query": "what does alice prefer"},
+        tool_call_id=f"read-{tool_name}",
+        session_id="s1",
+    )
+    assert handlers.ingest.sent == []  # type: ignore[attr-defined]
+
+
+def test_session_search_is_not_captured(hermes_home: Path) -> None:
+    """session_search (read-only SessionDB query) is in _AGENT_LOOP_TOOLS
+    upstream and out of scope for v0.4."""
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="session_search",
+        args={"query": "alice", "limit": 3},
+        tool_call_id="ss-1",
+        session_id="s1",
+    )
+    assert handlers.ingest.sent == []  # type: ignore[attr-defined]
+
+
+def test_todo_tool_is_not_captured(hermes_home: Path) -> None:
+    """todo is task-list state, not memory — out of scope for psy-hermes
+    even though it's in _AGENT_LOOP_TOOLS like memory."""
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="todo",
+        args={"todos": [{"text": "x", "done": False}]},
+        tool_call_id="t-1",
+        session_id="s1",
+    )
+    assert handlers.ingest.sent == []  # type: ignore[attr-defined]
+
+
+def test_built_in_memory_writes_remain_paired_when_external_provider_is_active(
+    hermes_home: Path,
+) -> None:
+    """At run_agent.py:9098, after the file-backed memory tool runs, Hermes
+    fans out via ``memory_manager.on_memory_write(...)`` to any active
+    external MemoryProvider (Honcho/Mem0/etc.) so the provider can mirror
+    the write semantically. psy-hermes (audit) and the provider (recall)
+    are complementary observers of the SAME write, not competing writers.
+
+    This test asserts that even if a provider is active and a hypothetical
+    fan-out tool fires afterwards, our envelope still pairs back to the
+    user-visible memory tool call — not to the provider's downstream
+    activity. (We simulate the fan-out by firing a memory pre_tool_call
+    immediately followed by a provider write tool; the second must be
+    silently dropped.)
+    """
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="memory",
+        args={"action": "add", "target": "user", "content": "alice prefers email"},
+        tool_call_id="mem-1",
+        session_id="s1",
+    )
+    # Hermes-internal fan-out (provider mirror). Goes through pre_tool_call
+    # in the agent loop; v0.4 must not emit a second envelope.
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="honcho_conclude",
+        args={"facts": ["alice prefers email"]},
+        tool_call_id="mem-1-fanout",
+        session_id="s1",
+    )
+
+    sent = handlers.ingest.sent  # type: ignore[attr-defined]
+    assert len(sent) == 1
+    assert sent[0]["operation"] == "create"
+    assert sent[0]["memory_path"] == "/memories/USER.md"
+    assert sent[0]["call_id"] == "mem-1"
+
+
+def test_documented_uncapturable_surfaces_have_no_hook(hermes_home: Path) -> None:
+    """SessionDB writes, trajectory JSONL writes, and flush_memories have
+    no upstream pre_tool_call analogue — they're internal to the agent
+    loop and don't pass through the tool dispatch path. This test
+    documents that fact: there is no hook name we could subscribe to for
+    these surfaces. (If Hermes ever adds one, the upstream PR would
+    surface in their VALID_HOOKS set, which we assert against here.)
+    """
+    captured = handlers_for_documented_surfaces(hermes_home)  # noqa: F841
+    valid = hermes_plugins.VALID_HOOKS
+    # As of hermes-agent v0.11.0, none of these names are valid hook
+    # events. If any of these flips to True in a future release, this
+    # test will fail and prompt a v0.5 scope expansion conversation.
+    for name in (
+        "memory_write",          # post-write fan-out for the memory tool
+        "session_db_write",      # SessionDB persistence
+        "trajectory_write",      # trajectory JSONL append
+        "flush_memories",        # flush_memories auxiliary writes
+    ):
+        assert name not in valid, (
+            f"hermes-agent now exposes hook '{name}' — "
+            "consider extending psy-hermes to subscribe."
+        )
+
+
+def handlers_for_documented_surfaces(hermes_home: Path):
+    """Build handlers via the real registration path; helper for the
+    boundary test above."""
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    return _load_psy_into(mgr)
