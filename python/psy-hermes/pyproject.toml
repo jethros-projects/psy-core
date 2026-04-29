@@ -1,0 +1,117 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "psy-hermes"
+version = "0.4.0"
+description = "Tamper-evident memory audit log for Hermes Agent. Hash-chained, HMAC-sealed. Plain plugin observer that forwards every memory mutation to the psy-core audit chain."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "jethros-projects" }]
+keywords = [
+  "audit",
+  "audit-log",
+  "tamper-evident",
+  "hermes",
+  "hermes-agent",
+  "memory",
+  "ai-agent",
+  "observability",
+  "governance",
+  "psy-core",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: System :: Logging",
+]
+dependencies = [
+  "pydantic>=2,<3",
+  "pyyaml>=6,<7",
+  "watchdog>=4,<7",
+]
+
+[project.optional-dependencies]
+# `hermes-agent` is the runtime host that loads us via the
+# `hermes_agent.plugins` entry point. We don't import any symbol from it
+# directly — the soft `hermes_cli.config.load_config` import in `register`
+# falls back to defaults if Hermes isn't installed — so we list it as an
+# optional extra. The standard install for users running this against a
+# real Hermes is `pip install psy-hermes[hermes]`.
+hermes = ["hermes-agent>=0.11,<0.12"]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<1",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/jethros-projects/psy-core"
+Source = "https://github.com/jethros-projects/psy-core/tree/main/python/psy-hermes"
+Issues = "https://github.com/jethros-projects/psy-core/issues"
+Changelog = "https://github.com/jethros-projects/psy-core/blob/main/CHANGELOG.md"
+
+[project.entry-points."hermes_agent.plugins"]
+psy = "psy_hermes.register:register"
+
+[project.scripts]
+psy-hermes = "psy_hermes.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/psy_hermes"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/psy_hermes",
+  "/README.md",
+  "/pyproject.toml",
+  "/tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "PL", "RUF"]
+# PLR0913/PLR2004/PLR0915: too-many-args, magic-value, too-many-statements; not useful for a small library.
+# PLC0415: lazy import. We deliberately defer expensive imports (yaml, watchdog) and import at use sites
+# to keep startup lean and to break circular-import chains in hooks↔watcher.
+# RUF059: unpacked-variable. We sometimes destructure all four return values for readability even when
+# only some are used in a particular test.
+# B017: assert blind exception. Tests assert "this raises" without caring about the type when the lib
+# legitimately raises pydantic.ValidationError but we don't want to pin to that specific type.
+# E501: line-length is enforced via formatter, not the linter, in this scope.
+# PLW2901: loop var overwrite by assignment is a legitimate pattern for `for line in stdin: line = line.strip()`.
+ignore = [
+  "PLR0913",
+  "PLR2004",
+  "PLR0915",
+  "PLC0415",
+  "RUF059",
+  "B017",
+  "E501",
+  "PLW2901",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["error"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+disallow_untyped_decorators = false
+ignore_missing_imports = true

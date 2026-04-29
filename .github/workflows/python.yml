@@ -1,0 +1,42 @@
+name: Python (psy-hermes)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'python/**'
+      - 'src/ingest.ts'
+      - 'src/cli.ts'
+      - '.github/workflows/python.yml'
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: python/psy-hermes
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: install uv
+        run: pip install uv
+      - name: create venv + install
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+      - name: ruff
+        run: .venv/bin/ruff check src tests
+      - name: mypy (src only — tests can use looser typing)
+        run: .venv/bin/mypy src
+        continue-on-error: true
+      - name: pytest
+        run: .venv/bin/pytest -q

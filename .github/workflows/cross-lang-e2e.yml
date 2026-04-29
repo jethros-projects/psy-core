@@ -1,0 +1,70 @@
+name: Cross-language E2E (Python ⇄ Node)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'python/**'
+      - 'src/**'
+      - 'package.json'
+      - 'tests/**'
+      - '.github/workflows/cross-lang-e2e.yml'
+
+jobs:
+  e2e:
+    name: ingest round-trip
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install psy-core (npm)
+        run: |
+          npm install
+          npm run build
+          # Use tsx-driven invocation as the e2e binary so we don't depend on
+          # publishing to npm. The Python side resolves `psy` on PATH first.
+          mkdir -p .bin
+          cat > .bin/psy <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+          exec node "$ROOT/dist/cli.js" "$@"
+          EOF
+          chmod +x .bin/psy
+          echo "$PWD/.bin" >> "$GITHUB_PATH"
+      - name: install psy-hermes (pip)
+        working-directory: python/psy-hermes
+        run: |
+          pip install uv
+          uv venv
+          uv pip install -e ".[dev]"
+      - name: psy init (creates fresh .psy.json + seal key)
+        run: ./.bin/psy init --no-color
+      - name: feed envelopes through ingest
+        run: |
+          cat <<'EOF' | ./.bin/psy ingest --no-startup
+          {"type":"intent","operation":"create","call_id":"e2e-1","identity":{"actor_id":"alice","tenant_id":"acme","session_id":"s1"},"memory_path":"/memories/MEMORY.md","payload":{"content":"hello"}}
+          {"type":"result","operation":"create","call_id":"e2e-1","identity":{"actor_id":"alice","tenant_id":"acme","session_id":"s1"},"memory_path":"/memories/MEMORY.md","payload":{"ok":true}}
+          {"type":"intent","operation":"str_replace","call_id":"e2e-2","identity":{"actor_id":"alice","tenant_id":"acme","session_id":"s1"},"memory_path":"/memories/USER.md","payload":{"content":"world"}}
+          {"type":"result","operation":"str_replace","call_id":"e2e-2","identity":{"actor_id":"alice","tenant_id":"acme","session_id":"s1"},"memory_path":"/memories/USER.md","payload":{"ok":true}}
+          EOF
+      - name: psy verify (chain integrity)
+        run: ./.bin/psy verify --no-color
+      - name: assert envelopes appear in DB
+        run: |
+          rows="$(./.bin/psy query --actor alice --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+          if [ "$rows" -ne 4 ]; then
+            echo "expected 4 rows, got $rows" >&2
+            exit 1
+          fi
+      - name: psy-hermes can run dry-run end-to-end
+        working-directory: python/psy-hermes
+        run: |
+          echo '{"type":"intent","operation":"create","call_id":"py-1"}' | .venv/bin/psy-hermes dry-run

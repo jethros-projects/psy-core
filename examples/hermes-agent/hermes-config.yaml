@@ -1,0 +1,27 @@
+# ~/.hermes/config.yaml
+# Drop this into the user's Hermes config directory (or use `psy-hermes init`
+# to insert just the plugins.psy block while leaving the rest of the file
+# untouched).
+plugins:
+  enabled:
+    - psy
+
+  psy:
+    enabled: true
+    actor_id: alice@acme.com         # REQUIRED unless allow_anonymous: true
+    tenant_id: acme                  # optional
+    purpose: production-debug        # optional
+
+    db_path: ~/.psy/audit.db         # optional; default <HERMES_HOME>/psy/audit.db
+    seal_key_path: ~/.psy/seal-key   # optional
+    memories_dir: ~/.hermes/memories # filesystem-watched dir
+
+    psy_core_version: 0.4.0          # exact pin (used by the npx fallback)
+    psy_binary: null                 # optional override — set to e.g. "/opt/psy/bin/psy"
+
+    redactor: default                # default | none | "<dotted_path>"
+    payload_capture: true            # capture memory content (with redaction)
+    dry_run: false
+    log_level: info
+    allow_anonymous: false
+    schema_version_pin: "1.0.0"

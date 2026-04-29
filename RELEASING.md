@@ -38,3 +38,22 @@ Watch the run: `gh run watch <run-id>` or the Actions tab on GitHub.
 ## NPM_TOKEN
 
 The publish workflow requires an `NPM_TOKEN` repository secret. Generate a granular access token with read-and-write permission on `psy-core` at npmjs.com, store it under repository secrets, and rotate annually. Configure 2FA-bypass on the token if your npm account has 2FA enabled — automated CI cannot complete an OTP challenge.
+
+## Releasing the `psy-hermes` PyPI sibling
+
+The Python plugin lives under `python/psy-hermes/` and ships separately to PyPI. Its release loop intentionally pins a single exact `psy-core` JS version per Python release; if the user installs `psy-hermes` and does not have `psy` on PATH, the plugin falls back to `npx -y psy-core@<exact-version> psy ingest`.
+
+Version-pinning protocol:
+
+1. Bump `python/psy-hermes/pyproject.toml` `version` first.
+2. Update the `psy_core_version` constant in `python/psy-hermes/src/psy_hermes/_version.py` to the EXACT JS version that this Python release targets. Never `latest`, never a range.
+3. The cross-language e2e workflow (`.github/workflows/cross-lang-e2e.yml`) verifies that `psy-hermes` can spawn `psy-core` of the pinned version end-to-end. CI fails the Python release if the pinned JS version no longer ingests cleanly.
+4. Tag and publish:
+    - `git tag -a psy-hermes-vX.Y.Z -m "psy-hermes vX.Y.Z — <summary>"`
+    - `git push origin psy-hermes-vX.Y.Z`
+
+The PyPI workflow runs `uv build` and publishes via the `PYPI_TOKEN` repository secret.
+
+## Cross-package compatibility
+
+The TypeScript package is the reference. The Python package speaks JSONL stdio against `psy ingest`. Only minor JS version bumps that preserve the ingest envelope schema are safe to combine with an existing Python release; any breaking ingest schema change requires a coordinated Python bump and a new pin.

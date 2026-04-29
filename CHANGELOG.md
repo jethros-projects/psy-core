@@ -10,6 +10,46 @@ A schema bump only happens when the event row shape changes incompatibly.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-29
+
+### Added
+
+- **`psy ingest` CLI subcommand.** Reads JSONL envelopes on stdin and
+  appends them to the audit chain as paired intent/result rows. Used by
+  language-side observer adapters (the first being `psy-hermes`, the
+  Hermes Agent plugin published separately on PyPI) that cannot speak
+  the on-disk schema directly. Emits a one-line protocol handshake on
+  startup (`{"ok":true,"version":...,"schema_version":...}`) and one
+  ACK per envelope. The HMAC seal is advanced after each successful
+  append, mirroring the in-process `Auditor`. TypeScript remains the
+  sole writer; no Python re-implementation of canonicalization, hashing,
+  or sealing was added.
+- **`PsyStore.appendIntent` / `appendResult` extended** to accept an
+  optional `identity` (actorId/tenantId/sessionId), `memoryPath`,
+  `purpose`, and `outcome` so the ingest envelope can thread observer-
+  side identity into the row without going through the in-process
+  `Auditor` layer.
+- **Hermes Agent adapter.** `psy-hermes` (PyPI sibling, published
+  separately from this repo at `python/psy-hermes/`) is a plain Hermes
+  plugin that subscribes to `pre_tool_call` (filtered to the `memory`
+  and `skill_manage` tools) plus a filesystem watcher on
+  `~/.hermes/memories/MEMORY.md` and `~/.hermes/memories/USER.md`. It
+  forwards JSONL to a long-lived `psy ingest` subprocess (PATH first,
+  `npx -y psy-core@<exact>` fallback). Memory operations only — tool,
+  LLM, and session-lifecycle telemetry are explicitly out of scope to
+  keep the brand crisp.
+- **Public types**: `IngestEnvelope`, `IntentEnvelope`, `ResultEnvelope`,
+  `IngestAck`, `IngestStartup`, `IngestOptions`, `INGEST_PROTOCOL_VERSION`,
+  plus the runtime helpers `parseIngestLine`, `parseIngestLineOrThrow`,
+  `appendFromEnvelope`, and `ingestStartupLine`.
+
+### Changed
+
+- The `IngestEnvelopeSchema` accepts intents and results as a discriminated
+  union on `type`. The wire format is documented in
+  `python/psy-hermes/README.md` but is not a public spec for third-party
+  implementations — TypeScript is the reference.
+
 ## [0.3.3] - 2026-04-27
 
 Initial public release of `psy-core`.
@@ -73,5 +113,6 @@ Initial public release of `psy-core`.
 - Windows path-guard support is not currently provided; the seal
   infrastructure works cross-platform.
 
-[Unreleased]: https://github.com/jethros-projects/psy-core/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/jethros-projects/psy-core/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jethros-projects/psy-core/releases/tag/v0.4.0
 [0.3.3]: https://github.com/jethros-projects/psy-core/releases/tag/v0.3.3

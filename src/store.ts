@@ -47,11 +47,21 @@ export interface StoredEvent extends EventHashMaterial {
   archived: boolean;
 }
 
+export interface AppendIdentityInput {
+  actorId?: string | null;
+  tenantId?: string | null;
+  sessionId?: string | null;
+}
+
 export interface AppendIntentInput {
   operation: string;
   payload?: unknown;
   callId?: string;
   timestamp?: string | Date;
+  identity?: AppendIdentityInput;
+  memoryPath?: string;
+  purpose?: string | null;
+  outcome?: import('./types.js').AuditOutcome;
 }
 
 export interface AppendResultInput {
@@ -60,6 +70,10 @@ export interface AppendResultInput {
   callId: string;
   intentSeq?: number | null;
   timestamp?: string | Date;
+  identity?: AppendIdentityInput;
+  memoryPath?: string;
+  purpose?: string | null;
+  outcome?: import('./types.js').AuditOutcome;
 }
 
 export interface QueryEventsOptions {
@@ -146,6 +160,10 @@ export class PsyStore {
       callId,
       payload,
       timestamp: input.timestamp,
+      identity: input.identity,
+      memoryPath: input.memoryPath,
+      purpose: input.purpose,
+      outcome: input.outcome,
     }));
     return this.toStoredEvent(event);
   }
@@ -163,6 +181,10 @@ export class PsyStore {
       callId: input.callId,
       payload,
       timestamp: input.timestamp,
+      identity: input.identity,
+      memoryPath: input.memoryPath,
+      purpose: input.purpose,
+      outcome: input.outcome,
     }));
     return { ...this.toStoredEvent(event), intentSeq };
   }
@@ -593,6 +615,10 @@ function compatDraft(input: {
   callId: string;
   payload: JsonValue;
   timestamp?: string | Date;
+  identity?: AppendIdentityInput;
+  memoryPath?: string;
+  purpose?: string | null;
+  outcome?: import('./types.js').AuditOutcome;
 }): DraftAuditEvent {
   const timestamp = timestampString(input.timestamp);
   const payloadJson = canonicalJson(input.payload);
@@ -604,18 +630,18 @@ function compatDraft(input: {
     operation: input.operation,
     audit_phase: input.phase,
     tool_call_id: input.callId,
-    actor_id: null,
-    tenant_id: null,
-    session_id: null,
-    memory_path: '/memories',
-    purpose: null,
+    actor_id: input.identity?.actorId ?? null,
+    tenant_id: input.identity?.tenantId ?? null,
+    session_id: input.identity?.sessionId ?? null,
+    memory_path: input.memoryPath ?? '/memories',
+    purpose: input.purpose ?? null,
     payload_preview: payloadJson,
     payload_redacted: false,
     redactor_id: null,
     redactor_error: null,
     tool_input_hash: hashCanonical(input.phase === 'intent' ? input.payload : { callId: input.callId, operation: input.operation }),
     tool_output_hash: input.phase === 'result' ? hashCanonical(input.payload) : null,
-    outcome: 'success',
+    outcome: input.outcome ?? 'success',
     error_code: null,
     error_type: null,
     error_message: null,

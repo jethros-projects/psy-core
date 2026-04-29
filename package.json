@@ -1,7 +1,7 @@
 {
   "name": "psy-core",
-  "version": "0.3.3",
-  "description": "Tamper-evident audit log for AI agent memory operations. Adapters for Anthropic Memory, Letta, Mastra, Mem0, LangChain, and LangGraph.",
+  "version": "0.4.0",
+  "description": "Tamper-evident audit log for AI agent memory operations. Adapters for Anthropic Memory, Letta, Mastra, Mem0, LangChain, LangGraph, and Hermes Agent (via psy-hermes).",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/jethros-projects/psy-core#readme",
@@ -26,6 +26,8 @@
     "mem0",
     "langchain",
     "langgraph",
+    "hermes",
+    "hermes-agent",
     "observability",
     "governance"
   ],

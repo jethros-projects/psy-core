@@ -58,8 +58,9 @@ psy verify --all                  # check chain integrity
 | **Mem0** | `psy-core/mem0` | view, create, str_replace, delete |
 | **LangChain** chat history | `psy-core/langchain` | view, insert, delete |
 | **LangGraph** checkpoints | `psy-core/langgraph` | view, create, insert, delete |
+| **Hermes Agent** memory + skills | `pip install psy-hermes` | create, str_replace, delete (MEMORY.md, USER.md, skills) |
 
-Per-framework setup examples are [further down](#per-framework-setup).
+Per-framework setup examples are [further down](#per-framework-setup). Hermes Agent runs in a separate Python process; see [`python/psy-hermes/README.md`](python/psy-hermes/README.md) and [`examples/hermes-agent/`](examples/hermes-agent/).
 
 ## What you get
 
@@ -80,6 +81,7 @@ psy query --actor user_123 --since 2026-04-25T00:00:00Z --limit 100
 psy verify --all            # full chain integrity check + sealed-tail verify
 psy verify --no-seal        # skip seal check (debugging only)
 psy export --format jsonl   # canonical NDJSON dump of the active log
+psy ingest                  # append events from JSONL on stdin (used by language-side observers)
 ```
 
 All commands respect `PSY_AUDIT_DB_PATH` (default `.psy/events.sqlite`) and the project's `.psy.json` config.

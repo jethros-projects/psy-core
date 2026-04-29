@@ -107,6 +107,24 @@ export {
   rowToEvent,
 } from './store.js';
 export {
+  INGEST_PROTOCOL_VERSION,
+  IngestEnvelopeSchema,
+  IntentEnvelopeSchema,
+  ResultEnvelopeSchema,
+  appendFromEnvelope,
+  ingestStartupLine,
+  parseIngestLine,
+  parseIngestLineOrThrow,
+} from './ingest.js';
+export type {
+  IngestAck,
+  IngestEnvelope,
+  IngestOptions,
+  IngestStartup,
+  IntentEnvelope,
+  ResultEnvelope,
+} from './ingest.js';
+export {
   archivedEvents,
   verifyStore,
 } from './verify.js';

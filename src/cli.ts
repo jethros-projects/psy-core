@@ -2,14 +2,24 @@ import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import pc from 'picocolors';
 import { existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import readline from 'node:readline';
 
 import { canonicalJson } from './canonical.js';
 import { initConfig, loadConfig } from './config.js';
+import { SCHEMA_VERSION } from './config.js';
 import { isPsyError } from './errors.js';
+import {
+  INGEST_PROTOCOL_VERSION,
+  appendFromEnvelope,
+  ingestStartupLine,
+  parseIngestLine,
+} from './ingest.js';
 import { Sealer, defaultSealPaths } from './seal.js';
 import { PsyStore } from './store.js';
 import type { AuditEvent, QueryFilters } from './types.js';
 import { verifyStore } from './verify.js';
+
+export const PSY_CLI_VERSION = '0.4.0';
 
 interface IO {
   stdout: { write(chunk: string): unknown };
@@ -18,7 +28,7 @@ interface IO {
 
 export function createProgram(io: IO = { stdout: process.stdout, stderr: process.stderr }): Command {
   const program = new Command();
-  program.name('psy').description('Tamper-evident memory event log').version('0.1.0').exitOverride();
+  program.name('psy').description('Tamper-evident memory event log').version(PSY_CLI_VERSION).exitOverride();
 
   program
     .command('init')
@@ -202,6 +212,42 @@ export function createProgram(io: IO = { stdout: process.stdout, stderr: process
       const store = await openStore();
       for (const event of store.allActiveEvents()) io.stdout.write(`${canonicalJson(event)}\n`);
       store.close();
+    });
+
+  program
+    .command('ingest')
+    .description('append audit events from JSONL on stdin (used by language-side observer adapters)')
+    .option('--no-redact', 'skip server-side payload redaction (still redacted upstream by adapter)')
+    .option('--no-startup', 'suppress the protocol-handshake startup line')
+    .option('--no-seal', 'skip HMAC seal updates (debugging only — leaves tail unsealed)')
+    .action(async (opts: { redact?: boolean; startup?: boolean; seal?: boolean }) => {
+      const { store, sqlitePath } = await openStoreWithPaths();
+      let sealer: Sealer | null = null;
+      if (opts.seal !== false && sqlitePath !== ':memory:') {
+        const sealPaths = defaultSealPaths(sqlitePath);
+        sealer = Sealer.bootstrap({ ...sealPaths, envKey: process.env.PSY_SEAL_KEY }).sealer;
+      }
+      try {
+        if (opts.startup !== false) {
+          io.stdout.write(ingestStartupLine(PSY_CLI_VERSION, SCHEMA_VERSION));
+        }
+        const rl = readline.createInterface({ input: process.stdin, terminal: false });
+        for await (const rawLine of rl) {
+          if (rawLine.length === 0) continue;
+          const parsed = parseIngestLine(rawLine);
+          if (!parsed.ok) {
+            io.stdout.write(`${JSON.stringify({ ok: false, error: parsed.error })}\n`);
+            continue;
+          }
+          const ack = await appendFromEnvelope(store, parsed.envelope, {
+            redactor: opts.redact === false ? null : undefined,
+            sealer,
+          });
+          io.stdout.write(`${JSON.stringify(ack)}\n`);
+        }
+      } finally {
+        store.close();
+      }
     });
 
   return program;
