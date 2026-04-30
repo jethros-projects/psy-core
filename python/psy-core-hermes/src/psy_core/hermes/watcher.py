@@ -32,11 +32,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from psy_hermes.config import PsyHermesConfig
-    from psy_hermes.hooks import HookHandlers
-    from psy_hermes.ingest_client import IngestClient
+    from psy_core.hermes.config import PsyHermesConfig
+    from psy_core.hermes.hooks import HookHandlers
+    from psy_core.hermes.ingest_client import IngestClient
 
-LOG = logging.getLogger("psy_hermes.watcher")
+LOG = logging.getLogger("psy_core.hermes.watcher")
 
 #: Files we watch by default (relative to `memories_dir`).
 DEFAULT_WATCH_FILES: tuple[str, ...] = ("MEMORY.md", "USER.md")
@@ -96,7 +96,7 @@ class MemoryWatcher:
             return
 
         # Lazy import: watchdog is a heavy import we don't want to pay
-        # at module load time for users running `psy-hermes init` etc.
+        # at module load time for users running `psy-core-hermes init` etc.
         from watchdog.events import FileSystemEvent, FileSystemEventHandler
         from watchdog.observers import Observer
 
@@ -137,7 +137,7 @@ class MemoryWatcher:
         self._observer.schedule(_Handler(), str(memories_dir), recursive=False)
         self._observer.start()
         self._started = True
-        self._log.info("psy-hermes watcher started on %s", memories_dir)
+        self._log.info("psy-core-hermes watcher started on %s", memories_dir)
 
     def stop(self) -> None:
         if not self._started or self._observer is None:
@@ -169,7 +169,7 @@ class MemoryWatcher:
         pending = self._most_recent_pending(within_s=PAIR_WINDOW_S)
         envelope = self._build_envelope(path, digest, pending)
         if self._config.dry_run:
-            self._log.info("psy-hermes dry-run watcher: %s", envelope)
+            self._log.info("psy-core-hermes dry-run watcher: %s", envelope)
             return
         self._ingest.send(envelope)
 
@@ -181,7 +181,7 @@ class MemoryWatcher:
         output is appended to MEMORY.md or USER.md regardless of any
         sub-path. Pairing strictly by memory_path would miss most events.
         """
-        from psy_hermes.hooks import PendingIntent  # local import — avoids cycle
+        from psy_core.hermes.hooks import PendingIntent  # local import — avoids cycle
 
         cutoff = time.monotonic() - within_s
         candidate: PendingIntent | None = None
@@ -208,7 +208,7 @@ class MemoryWatcher:
                 "operation": pending.operation,
                 "call_id": pending.call_id,
                 "memory_path": memory_path,
-                "source": "psy-hermes-watcher",
+                "source": "psy-core-hermes-watcher",
             }
             if pending.session_id:
                 envelope.setdefault("identity", {})["session_id"] = pending.session_id
@@ -218,7 +218,7 @@ class MemoryWatcher:
                 "operation": "create",
                 "call_id": f"unattributed-{int(time.monotonic() * 1000)}-{path.name}",
                 "memory_path": memory_path,
-                "source": "psy-hermes-watcher",
+                "source": "psy-core-hermes-watcher",
                 "outcome": "unattributed",
             }
         identity_block: dict[str, Any] = envelope.get("identity", {}) or {}

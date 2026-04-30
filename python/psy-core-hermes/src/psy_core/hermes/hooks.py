@@ -27,11 +27,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from psy_hermes.config import PsyHermesConfig
-from psy_hermes.ingest_client import IngestClient
-from psy_hermes.redaction import Redactor
+from psy_core.hermes.config import PsyHermesConfig
+from psy_core.hermes.ingest_client import IngestClient
+from psy_core.hermes.redaction import Redactor
 
-LOG = logging.getLogger("psy_hermes.hooks")
+LOG = logging.getLogger("psy_core.hermes.hooks")
 
 #: Hermes tool names we observe. Tools outside this set are ignored.
 MEMORY_TOOLS = frozenset({"memory", "skill_manage"})
@@ -203,7 +203,7 @@ class HookHandlers:
         try:
             self._handle_pre(kwargs)
         except Exception:
-            self.log.exception("psy-hermes: pre_tool_call failed")
+            self.log.exception("psy-core-hermes: pre_tool_call failed")
 
     def post_tool_call(self, **kwargs: Any) -> None:
         """Called by Hermes after a tool returns, but only for tools NOT in
@@ -213,7 +213,7 @@ class HookHandlers:
         try:
             self._handle_post(kwargs)
         except Exception:
-            self.log.exception("psy-hermes: post_tool_call failed")
+            self.log.exception("psy-core-hermes: post_tool_call failed")
 
     def _handle_pre(self, kwargs: dict[str, Any]) -> None:
         tool_name = kwargs.get("tool_name")
@@ -246,7 +246,7 @@ class HookHandlers:
             payload={"tool": tool_name, "args": args},
         )
         if self.config.dry_run:
-            self.log.info("psy-hermes dry-run intent: %s", envelope)
+            self.log.info("psy-core-hermes dry-run intent: %s", envelope)
             return
         self.ingest.send(envelope)
 
@@ -292,7 +292,7 @@ class HookHandlers:
             payload={"tool": tool_name, "args": args, "result": _summarize_result(result)},
         )
         if self.config.dry_run:
-            self.log.info("psy-hermes dry-run result: %s", envelope)
+            self.log.info("psy-core-hermes dry-run result: %s", envelope)
             return
         self.ingest.send(envelope)
         with self.pending_lock:
@@ -326,7 +326,7 @@ class HookHandlers:
             "operation": operation,
             "call_id": call_id,
             "memory_path": memory_path,
-            "source": "psy-hermes",
+            "source": "psy-core-hermes",
         }
         identity = _identity_block(self.config, session_id)
         if identity:

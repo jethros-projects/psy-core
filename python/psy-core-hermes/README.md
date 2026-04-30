@@ -1,20 +1,20 @@
-# psy-hermes
+# psy-core-hermes
 
 > Tamper-evident memory audit log for your Hermes agent.
 > Every memory write — to MEMORY.md, USER.md, or skills — hash-chained and HMAC-sealed.
 > One `pip install`.
 
-[![PyPI](https://img.shields.io/pypi/v/psy-hermes.svg)](https://pypi.org/project/psy-hermes/)
-[![Python](https://img.shields.io/pypi/pyversions/psy-hermes.svg)](https://pypi.org/project/psy-hermes/)
-[![License](https://img.shields.io/pypi/l/psy-hermes.svg)](https://github.com/jethros-projects/psy-core/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/psy-core-hermes.svg)](https://pypi.org/project/psy-core-hermes/)
+[![Python](https://img.shields.io/pypi/pyversions/psy-core-hermes.svg)](https://pypi.org/project/psy-core-hermes/)
+[![License](https://img.shields.io/pypi/l/psy-core-hermes.svg)](https://github.com/jethros-projects/psy-core/blob/main/LICENSE)
 
-`psy-hermes` is the Hermes Agent companion to [`psy-core`](https://www.npmjs.com/package/psy-core). It registers as a plain Hermes plugin, observes every memory mutation, and forwards each one to a long-lived `psy ingest` subprocess that writes the canonical hash-chained, HMAC-sealed audit log to `~/.psy/audit.db`.
+`psy-core-hermes` is the Hermes Agent companion to [`psy-core`](https://www.npmjs.com/package/psy-core). It registers as a plain Hermes plugin, observes every memory mutation, and forwards each one to a long-lived `psy ingest` subprocess that writes the canonical hash-chained, HMAC-sealed audit log to `~/.psy/audit.db`.
 
 ## Install
 
 ```bash
-pip install psy-hermes
-psy-hermes init --actor-id you@example.com
+pip install psy-core-hermes
+psy-core-hermes init --actor-id you@example.com
 ```
 
 This adds a `plugins.psy` block to `~/.hermes/config.yaml`. Then run Hermes as usual; the plugin loads via Hermes's `hermes_agent.plugins` entry-point group.
@@ -45,7 +45,7 @@ Hermes has more than one kind of memory. v0.4 deliberately covers the file-backe
 | 1 | `memory` tool — `add/replace/remove × {memory,user}` writing MEMORY.md / USER.md | ✅ via `pre_tool_call` + filesystem watcher | **Captured** |
 | 2 | `skill_manage` tool — SKILL.md + sub-files | ✅ via `pre_tool_call` + `post_tool_call` | **Captured** |
 | 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` (verified at `run_agent.py:9051`'s `_invoke_tool` block — the hook fires before `memory_manager.handle_tool_call`) | **Not captured** in v0.4. Write-tool capture is the single largest v0.5 candidate; turn-on is one allowlist edit. |
-| 4 | MemoryProvider lifecycle hooks (`sync_turn`, `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `on_delegation`) | Subclass-only — `MemoryManager.add_provider` is single-select, so subclassing locks the user out of running Honcho/Mem0/Hindsight alongside psy | Out of scope (architectural — would require psy-hermes to BE the user's MemoryProvider, which the plan explicitly rejected) |
+| 4 | MemoryProvider lifecycle hooks (`sync_turn`, `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `on_delegation`) | Subclass-only — `MemoryManager.add_provider` is single-select, so subclassing locks the user out of running Honcho/Mem0/Hindsight alongside psy | Out of scope (architectural — would require psy-core-hermes to BE the user's MemoryProvider, which the plan explicitly rejected) |
 | 5 | `session_search` (read-only SessionDB query) | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`, no post) | Not captured (read-only) |
 | 6 | `todo` tool | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`) | Not captured (not memory) |
 | 7 | SessionDB writes (cross-session summaries) | ❌ no upstream hook | Out of scope (would need an upstream PR) |
@@ -53,7 +53,7 @@ Hermes has more than one kind of memory. v0.4 deliberately covers the file-backe
 | 9 | `flush_memories()` auxiliary writes | ❌ no upstream hook | Out of scope (would need an upstream PR) |
 | 10 | Gateway transport events | Separate `gateway/hooks.py` registry | Separate adapter scope |
 
-Note on #3 ↔ #1: at `run_agent.py:9098`, when the file-backed `memory` tool runs, Hermes also calls `memory_manager.on_memory_write(...)` so any active external MemoryProvider can mirror the write semantically. That makes psy-hermes (audit) and Honcho/Mem0 (semantic recall) **complementary observers of the same write**, not competing writers — they're additive.
+Note on #3 ↔ #1: at `run_agent.py:9098`, when the file-backed `memory` tool runs, Hermes also calls `memory_manager.on_memory_write(...)` so any active external MemoryProvider can mirror the write semantically. That makes psy-core-hermes (audit) and Honcho/Mem0 (semantic recall) **complementary observers of the same write**, not competing writers — they're additive.
 
 If you need Mem0/Letta/LangChain memory audited at the API level (rather than via Hermes's tool dispatch), psy-core ships dedicated adapters for those frameworks; see the [adapter table in the root README](../../README.md#supported-memory-frameworks).
 
@@ -62,7 +62,7 @@ If you need Mem0/Letta/LangChain memory audited at the API level (rather than vi
 `actor_id` is **required** unless `allow_anonymous: true`. Audit events must attribute the session to a principal. When `actor_id` is missing the plugin emits the F4 error template at session start and refuses to register hooks:
 
 ```
-psy-hermes: actor_id is required.
+psy-core-hermes: actor_id is required.
   Why:    audit events must attribute the session to a principal.
   Where:  ~/.hermes/config.yaml -> plugins.psy.actor_id
   Example:
@@ -70,7 +70,7 @@ psy-hermes: actor_id is required.
       psy:
         actor_id: alice@acme.com
   Bypass: set allow_anonymous: true (not recommended in production).
-  Docs:   https://github.com/jethros-projects/psy-core/blob/main/python/psy-hermes/README.md#identity
+  Docs:   https://github.com/jethros-projects/psy-core/blob/main/python/psy-core-hermes/README.md#identity
 ```
 
 ## Configuration
@@ -105,10 +105,10 @@ plugins:
 ## Console scripts
 
 ```bash
-psy-hermes init [--actor-id NAME]   # idempotent config block insertion
-psy-hermes doctor                   # config + paths + subprocess handshake test
-psy-hermes status                   # one-line summary
-psy-hermes dry-run < envelopes.jsonl  # emit envelopes locally; never spawn ingest
+psy-core-hermes init [--actor-id NAME]   # idempotent config block insertion
+psy-core-hermes doctor                   # config + paths + subprocess handshake test
+psy-core-hermes status                   # one-line summary
+psy-core-hermes dry-run < envelopes.jsonl  # emit envelopes locally; never spawn ingest
 ```
 
 ## Architecture
@@ -117,7 +117,7 @@ psy-hermes dry-run < envelopes.jsonl  # emit envelopes locally; never spawn inge
 ┌─────────────────────────────────────────┐         ┌─────────────────────┐
 │ Hermes process (Python)                 │         │ psy ingest (Node)   │
 │                                         │         │                     │
-│  psy_hermes.register(ctx)               │         │  Auditor.append()   │
+│  psy_core.hermes.register(ctx)               │         │  Auditor.append()   │
 │   ├─ register_hook(pre_tool_call,       │         │  Sealer.writeHead() │
 │   │   filter: tool_name in              │  JSONL  │  ↓                  │
 │   │   {"memory","skill_manage"})        │  ──────▶│  ~/.psy/audit.db    │
@@ -138,8 +138,8 @@ psy-hermes dry-run < envelopes.jsonl  # emit envelopes locally; never spawn inge
 
 ## Distribution
 
-- **Primary:** PyPI as `psy-hermes`. Auto-discovered via `hermes_agent.plugins` entry-point.
-- **Secondary:** `hermes plugins install jethros-projects/psy-hermes` (Hermes's own installer; runs `git clone --depth 1` against the in-repo path).
+- **Primary:** PyPI as `psy-core-hermes`. Auto-discovered via `hermes_agent.plugins` entry-point.
+- **Secondary:** `hermes plugins install jethros-projects/psy-core-hermes` (Hermes's own installer; runs `git clone --depth 1` against the in-repo path).
 
 ## Verification
 
@@ -157,7 +157,7 @@ v0.11.0:
 
 - Entry-point group is `hermes_agent.plugins`; the loader does
   `ep.load()` and then `getattr(module, "register")`, so our entry-point
-  value is the **module path** `psy_hermes.register` (not the `module:attr`
+  value is the **module path** `psy_core.hermes.register` (not the `module:attr`
   form — that returns the function from `ep.load()` and breaks the
   `getattr(module, "register")` lookup).
 - `_AGENT_LOOP_TOOLS = {"todo", "memory", "session_search", "delegate_task"}`

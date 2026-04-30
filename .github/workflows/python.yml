@@ -1,4 +1,4 @@
-name: Python (psy-hermes)
+name: Python (psy-core-hermes)
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: python/psy-hermes
+        working-directory: python/psy-core-hermes
     strategy:
       fail-fast: false
       matrix:

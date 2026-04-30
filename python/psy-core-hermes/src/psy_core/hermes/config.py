@@ -1,4 +1,4 @@
-"""Typed configuration for psy-hermes.
+"""Typed configuration for psy-core-hermes.
 
 Read from `~/.hermes/config.yaml` under `plugins.psy` via Hermes's standard
 `hermes_cli.config.load_config` idiom. Pydantic validates required fields
@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from psy_hermes._version import PSY_CORE_SCHEMA_VERSION, PSY_CORE_VERSION
+from psy_core.hermes._version import PSY_CORE_SCHEMA_VERSION, PSY_CORE_VERSION
 
 
 def _expand(path: str | os.PathLike[str]) -> Path:
@@ -102,12 +102,12 @@ def load_psy_config(raw: dict[str, Any] | None) -> PsyHermesConfig:
 
 
 F4_ERROR_TEMPLATE = """\
-psy-hermes: {summary}
+psy-core-hermes: {summary}
   Why:    {why}
   Where:  {where}
   Example:
 {example}
-{bypass_block}  Docs:   https://github.com/jethros-projects/psy-core/blob/main/python/psy-hermes/README.md{anchor}
+{bypass_block}  Docs:   https://github.com/jethros-projects/psy-core/blob/main/python/psy-core-hermes/README.md{anchor}
 """
 
 

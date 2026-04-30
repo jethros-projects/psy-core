@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Bootstrap a self-contained walkthrough of psy-hermes against a fresh
+# Bootstrap a self-contained walkthrough of psy-core-hermes against a fresh
 # Hermes agent install. See README.md for the narrative.
 #
 # Usage:
 #   ./run.sh --actor-id you@example.com [--with-hermes]
 #
-# By default this only installs psy-hermes and psy-core; pass --with-hermes
+# By default this only installs psy-core-hermes and psy-core; pass --with-hermes
 # to also install hermes-agent from PyPI (requires Python >=3.11).
 
 set -euo pipefail
@@ -54,8 +54,8 @@ python3 -m venv .venv
 echo "==> upgrading pip"
 pip install --upgrade pip
 
-echo "==> installing psy-hermes"
-pip install -e ../../python/psy-hermes
+echo "==> installing psy-core-hermes"
+pip install -e ../../python/psy-core-hermes
 
 if $WITH_HERMES; then
   echo "==> installing hermes-agent"
@@ -69,11 +69,11 @@ else
   echo "  npm not found; the npx fallback will be used at runtime."
 fi
 
-echo "==> running psy-hermes init"
-psy-hermes init --actor-id "$ACTOR_ID"
+echo "==> running psy-core-hermes init"
+psy-core-hermes init --actor-id "$ACTOR_ID"
 
-echo "==> running psy-hermes doctor"
-psy-hermes doctor || true
+echo "==> running psy-core-hermes doctor"
+psy-core-hermes doctor || true
 
 cat <<EOF
 

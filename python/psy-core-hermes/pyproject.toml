@@ -3,7 +3,7 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 [project]
-name = "psy-hermes"
+name = "psy-core-hermes"
 version = "0.4.0"
 description = "Tamper-evident memory audit log for Hermes Agent. Hash-chained, HMAC-sealed. Plain plugin observer that forwards every memory mutation to the psy-core audit chain."
 readme = "README.md"
@@ -47,7 +47,7 @@ dependencies = [
 # directly — the soft `hermes_cli.config.load_config` import in `register`
 # falls back to defaults if Hermes isn't installed — so we list it as an
 # optional extra. The standard install for users running this against a
-# real Hermes is `pip install psy-hermes[hermes]`.
+# real Hermes is `pip install psy-core-hermes[hermes]`.
 hermes = ["hermes-agent>=0.11,<0.12"]
 dev = [
   "pytest>=8,<9",
@@ -58,7 +58,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/jethros-projects/psy-core"
-Source = "https://github.com/jethros-projects/psy-core/tree/main/python/psy-hermes"
+Source = "https://github.com/jethros-projects/psy-core/tree/main/python/psy-core-hermes"
 Issues = "https://github.com/jethros-projects/psy-core/issues"
 Changelog = "https://github.com/jethros-projects/psy-core/blob/main/CHANGELOG.md"
 
@@ -70,17 +70,21 @@ Changelog = "https://github.com/jethros-projects/psy-core/blob/main/CHANGELOG.md
 # function attribute. Verified against hermes-agent v0.11.0 at
 # hermes_cli/plugins.py: `_load_entrypoint_module` returns `ep.load()`,
 # `_load_plugin` calls `getattr(module, "register", None)`.
-psy = "psy_hermes.register"
+psy = "psy_core.hermes.register"
 
 [project.scripts]
-psy-hermes = "psy_hermes.cli:main"
+psy-core-hermes = "psy_core.hermes.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/psy_hermes"]
+# Ship the entire psy_core namespace (only psy_core/hermes/ for now).
+# Other psy_core_<adapter> distributions can contribute to the same
+# namespace via PEP 420 — there is intentionally no __init__.py at
+# src/psy_core/ for that reason.
+packages = ["src/psy_core"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/src/psy_hermes",
+  "/src/psy_core",
   "/README.md",
   "/pyproject.toml",
   "/tests",

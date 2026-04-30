@@ -1,4 +1,4 @@
-"""Version pins for psy-hermes.
+"""Version pins for psy-core-hermes.
 
 The exact JS version of psy-core that this Python release ships against.
 The npx fallback uses this exact value (never a range, never `latest`) so a

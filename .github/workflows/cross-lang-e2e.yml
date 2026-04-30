@@ -39,8 +39,8 @@ jobs:
           EOF
           chmod +x .bin/psy
           echo "$PWD/.bin" >> "$GITHUB_PATH"
-      - name: install psy-hermes (pip)
-        working-directory: python/psy-hermes
+      - name: install psy-core-hermes (pip)
+        working-directory: python/psy-core-hermes
         run: |
           pip install uv
           uv venv
@@ -64,10 +64,10 @@ jobs:
             echo "expected 4 rows, got $rows" >&2
             exit 1
           fi
-      - name: psy-hermes can run dry-run end-to-end
-        working-directory: python/psy-hermes
+      - name: psy-core-hermes can run dry-run end-to-end
+        working-directory: python/psy-core-hermes
         run: |
-          echo '{"type":"intent","operation":"create","call_id":"py-1"}' | .venv/bin/psy-hermes dry-run
+          echo '{"type":"intent","operation":"create","call_id":"py-1"}' | .venv/bin/psy-core-hermes dry-run
 
       # Live integration test: install hermes-agent from upstream, drive
       # plugin discovery + hook invocation through the real PluginManager,
@@ -78,12 +78,12 @@ jobs:
           repository: NousResearch/hermes-agent
           path: hermes-agent
       - name: install hermes-agent without runtime deps
-        working-directory: python/psy-hermes
+        working-directory: python/psy-core-hermes
         run: |
           # We don't need anthropic/openai/etc. — only the plugin manager.
           .venv/bin/pip install ../../hermes-agent --no-deps
       - name: run real-Hermes integration suite (35 tests)
-        working-directory: python/psy-hermes
+        working-directory: python/psy-core-hermes
         run: |
           # The suite at tests/test_real_hermes.py drives the real
           # PluginManager (discovery, register, hooks, invoke_hook,

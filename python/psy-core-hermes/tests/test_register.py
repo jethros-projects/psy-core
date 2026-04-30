@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-import psy_hermes.register as register_module
-from psy_hermes.config import PsyHermesConfig
-from psy_hermes.ingest_client import IngestSpawnPlan
+import psy_core.hermes.register as register_module
+from psy_core.hermes.config import PsyHermesConfig
+from psy_core.hermes.ingest_client import IngestSpawnPlan
 
 
 class StubCtx:

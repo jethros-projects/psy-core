@@ -58,9 +58,9 @@ psy verify --all                  # check chain integrity
 | **Mem0** | `psy-core/mem0` | view, create, str_replace, delete |
 | **LangChain** chat history | `psy-core/langchain` | view, insert, delete |
 | **LangGraph** checkpoints | `psy-core/langgraph` | view, create, insert, delete |
-| **Hermes Agent** memory + skills | `pip install psy-hermes` | create, str_replace, delete (MEMORY.md, USER.md, skills) |
+| **Hermes Agent** memory + skills | `pip install psy-core-hermes` | create, str_replace, delete (MEMORY.md, USER.md, skills) |
 
-Per-framework setup examples are [further down](#per-framework-setup). Hermes Agent runs in a separate Python process; see [`python/psy-hermes/README.md`](python/psy-hermes/README.md) and [`examples/hermes-agent/`](examples/hermes-agent/).
+Per-framework setup examples are [further down](#per-framework-setup). Hermes Agent runs in a separate Python process; see [`python/psy-core-hermes/README.md`](python/psy-core-hermes/README.md) and [`examples/hermes-agent/`](examples/hermes-agent/).
 
 ## What you get
 

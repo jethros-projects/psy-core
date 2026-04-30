@@ -1,5 +1,5 @@
 # ~/.hermes/config.yaml
-# Drop this into the user's Hermes config directory (or use `psy-hermes init`
+# Drop this into the user's Hermes config directory (or use `psy-core-hermes init`
 # to insert just the plugins.psy block while leaving the rest of the file
 # untouched).
 plugins:

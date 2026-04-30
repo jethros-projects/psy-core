@@ -4,7 +4,7 @@ These tests skip cleanly when ``hermes_cli`` is not importable (so the
 unit-only test run on a machine without hermes-agent installed still
 passes). When hermes-agent is installed, the suite walks every path
 through Hermes's plugin discovery + invocation machinery and asserts
-that psy-hermes behaves correctly under the real contract.
+that psy-core-hermes behaves correctly under the real contract.
 
 Coverage:
 
@@ -57,7 +57,7 @@ hermes_plugins = pytest.importorskip(
 )
 hermes_config = pytest.importorskip("hermes_cli.config")
 
-from psy_hermes.hooks import HookHandlers  # noqa: E402
+from psy_core.hermes.hooks import HookHandlers  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -137,7 +137,7 @@ def test_psy_entry_point_is_discoverable() -> None:
     # getattr(module, "register"), so this MUST be a module path.
     assert ":" not in psy[0].value
     target = psy[0].load()
-    # Loaded object should be the psy_hermes.register module (a module),
+    # Loaded object should be the psy_core.hermes.register module (a module),
     # which exposes a callable named `register`.
     assert hasattr(target, "register")
     assert callable(target.register)
@@ -573,7 +573,7 @@ def test_thread_pool_through_invoke_hook(hermes_home: Path) -> None:
 def _node_psy_wrapper(home: Path) -> Path:
     """Materialize a `psy` shim that execs `node dist/cli.js`. Returns the
     bin dir to prepend to PATH."""
-    psy_root = Path(__file__).resolve().parents[2]  # python/psy-hermes/tests/.. -> repo root via psy-core
+    psy_root = Path(__file__).resolve().parents[2]  # python/psy-core-hermes/tests/.. -> repo root via psy-core
     # Walk up until we hit psy-core/dist/cli.js.
     candidate = psy_root
     for _ in range(6):
@@ -596,7 +596,7 @@ def test_real_psy_ingest_subprocess_round_trip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Drive the FULL pipeline:
-    Hermes invoke_hook -> psy_hermes handlers -> IngestClient ->
+    Hermes invoke_hook -> psy_core.hermes handlers -> IngestClient ->
     real `psy ingest` Node subprocess -> SQLite chain -> psy verify rc=0.
     """
     if shutil.which("node") is None:
@@ -872,7 +872,7 @@ def test_session_search_is_not_captured(hermes_home: Path) -> None:
 
 
 def test_todo_tool_is_not_captured(hermes_home: Path) -> None:
-    """todo is task-list state, not memory — out of scope for psy-hermes
+    """todo is task-list state, not memory — out of scope for psy-core-hermes
     even though it's in _AGENT_LOOP_TOOLS like memory."""
     _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
     mgr = _fresh_manager()
@@ -894,7 +894,7 @@ def test_built_in_memory_writes_remain_paired_when_external_provider_is_active(
     """At run_agent.py:9098, after the file-backed memory tool runs, Hermes
     fans out via ``memory_manager.on_memory_write(...)`` to any active
     external MemoryProvider (Honcho/Mem0/etc.) so the provider can mirror
-    the write semantically. psy-hermes (audit) and the provider (recall)
+    the write semantically. psy-core-hermes (audit) and the provider (recall)
     are complementary observers of the SAME write, not competing writers.
 
     This test asserts that even if a provider is active and a hypothetical
@@ -954,7 +954,7 @@ def test_documented_uncapturable_surfaces_have_no_hook(hermes_home: Path) -> Non
     ):
         assert name not in valid, (
             f"hermes-agent now exposes hook '{name}' — "
-            "consider extending psy-hermes to subscribe."
+            "consider extending psy-core-hermes to subscribe."
         )
 
 

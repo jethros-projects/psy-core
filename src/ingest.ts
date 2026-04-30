@@ -2,7 +2,7 @@
  * Ingest envelope parsing, validation, and dispatch.
  *
  * The `psy ingest` CLI subcommand consumes JSONL on stdin, where each line is
- * an envelope produced by an external observer (such as the `psy-hermes`
+ * an envelope produced by an external observer (such as the `psy-core-hermes`
  * Python plugin). The envelope describes a single audit event — either an
  * intent (pre-tool-call) or a result (post-tool-call / filesystem-confirmed).
  *

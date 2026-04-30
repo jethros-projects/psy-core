@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from psy_hermes.ingest_client import IngestClient, IngestSpawnPlan, resolve_spawn_plan
+from psy_core.hermes.ingest_client import IngestClient, IngestSpawnPlan, resolve_spawn_plan
 
 FAKE_INGEST = """\
 #!/usr/bin/env python3

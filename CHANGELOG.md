@@ -16,7 +16,7 @@ A schema bump only happens when the event row shape changes incompatibly.
 
 - **`psy ingest` CLI subcommand.** Reads JSONL envelopes on stdin and
   appends them to the audit chain as paired intent/result rows. Used by
-  language-side observer adapters (the first being `psy-hermes`, the
+  language-side observer adapters (the first being `psy-core-hermes`, the
   Hermes Agent plugin published separately on PyPI) that cannot speak
   the on-disk schema directly. Emits a one-line protocol handshake on
   startup (`{"ok":true,"version":...,"schema_version":...}`) and one
@@ -29,8 +29,8 @@ A schema bump only happens when the event row shape changes incompatibly.
   `purpose`, and `outcome` so the ingest envelope can thread observer-
   side identity into the row without going through the in-process
   `Auditor` layer.
-- **Hermes Agent adapter.** `psy-hermes` (PyPI sibling, published
-  separately from this repo at `python/psy-hermes/`) is a plain Hermes
+- **Hermes Agent adapter.** `psy-core-hermes` (PyPI sibling, published
+  separately from this repo at `python/psy-core-hermes/`) is a plain Hermes
   plugin that subscribes to `pre_tool_call` (filtered to the `memory`
   and `skill_manage` tools) plus a filesystem watcher on
   `~/.hermes/memories/MEMORY.md` and `~/.hermes/memories/USER.md`. It
@@ -47,7 +47,7 @@ A schema bump only happens when the event row shape changes incompatibly.
 
 - The `IngestEnvelopeSchema` accepts intents and results as a discriminated
   union on `type`. The wire format is documented in
-  `python/psy-hermes/README.md` but is not a public spec for third-party
+  `python/psy-core-hermes/README.md` but is not a public spec for third-party
   implementations — TypeScript is the reference.
 
 ## [0.3.3] - 2026-04-27

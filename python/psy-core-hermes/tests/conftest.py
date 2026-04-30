@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from psy_hermes.config import PsyHermesConfig
-from psy_hermes.hooks import HookHandlers, make_hook_handlers
+from psy_core.hermes.config import PsyHermesConfig
+from psy_core.hermes.hooks import HookHandlers, make_hook_handlers
 
 
 class FakeIngestClient:
@@ -65,9 +65,9 @@ def hooks(
 @pytest.fixture(autouse=True)
 def _reset_logging() -> Iterator[None]:
     # Suppress the noisy WARN logs that exercises of the failure path emit.
-    previous = logging.getLogger("psy_hermes").level
-    logging.getLogger("psy_hermes").setLevel(logging.CRITICAL)
+    previous = logging.getLogger("psy_core.hermes").level
+    logging.getLogger("psy_core.hermes").setLevel(logging.CRITICAL)
     try:
         yield
     finally:
-        logging.getLogger("psy_hermes").setLevel(previous)
+        logging.getLogger("psy_core.hermes").setLevel(previous)

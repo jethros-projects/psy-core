@@ -5,9 +5,9 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from psy_hermes.config import PsyHermesConfig
-from psy_hermes.hooks import HookHandlers, make_hook_handlers
-from psy_hermes.watcher import MemoryWatcher
+from psy_core.hermes.config import PsyHermesConfig
+from psy_core.hermes.hooks import HookHandlers, make_hook_handlers
+from psy_core.hermes.watcher import MemoryWatcher
 from tests.conftest import FakeIngestClient
 
 

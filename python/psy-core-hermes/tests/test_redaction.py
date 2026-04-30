@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from psy_hermes.redaction import redact_payload, redact_text
+from psy_core.hermes.redaction import redact_payload, redact_text
 
 
 def test_anthropic_key_takes_priority_over_openai_pattern() -> None:

@@ -2,7 +2,7 @@
 
 Exposed via the `hermes_agent.plugins` entry-point group as `psy`. Hermes
 discovers it after the user adds `plugins.enabled: [psy]` to
-`~/.hermes/config.yaml` (or runs `psy-hermes init`).
+`~/.hermes/config.yaml` (or runs `psy-core-hermes init`).
 
 The plugin is intentionally a plain observer rather than a
 `MemoryProvider` subclass: `MemoryManager.add_provider` rejects more than
@@ -17,17 +17,17 @@ import sys
 from contextlib import suppress
 from typing import Any
 
-from psy_hermes.config import (
+from psy_core.hermes.config import (
     PsyHermesConfig,
     format_actor_id_required_error,
     load_psy_config,
 )
-from psy_hermes.hooks import HookHandlers, make_hook_handlers
-from psy_hermes.ingest_client import IngestClient, resolve_spawn_plan
-from psy_hermes.redaction import resolve_redactor
-from psy_hermes.watcher import MemoryWatcher
+from psy_core.hermes.hooks import HookHandlers, make_hook_handlers
+from psy_core.hermes.ingest_client import IngestClient, resolve_spawn_plan
+from psy_core.hermes.redaction import resolve_redactor
+from psy_core.hermes.watcher import MemoryWatcher
 
-LOG = logging.getLogger("psy_hermes")
+LOG = logging.getLogger("psy_core.hermes")
 
 
 def _read_psy_section() -> dict[str, Any] | None:
@@ -64,11 +64,11 @@ def register(ctx: Any) -> None:
     try:
         config = load_psy_config(section)
     except Exception as exc:
-        LOG.error("psy-hermes config invalid: %s", exc)
+        LOG.error("psy-core-hermes config invalid: %s", exc)
         return
 
     if not config.enabled:
-        LOG.info("psy-hermes is disabled (config.enabled=false)")
+        LOG.info("psy-core-hermes is disabled (config.enabled=false)")
         return
 
     if not config.actor_id and not config.allow_anonymous:
@@ -81,7 +81,7 @@ def register(ctx: Any) -> None:
     try:
         plan = resolve_spawn_plan(config.psy_binary, config.psy_core_version)
     except FileNotFoundError as exc:
-        LOG.error("psy-hermes: %s", exc)
+        LOG.error("psy-core-hermes: %s", exc)
         return
 
     ingest = IngestClient(plan=plan)
@@ -98,7 +98,7 @@ def register(ctx: Any) -> None:
         watcher.start()
 
     LOG.info(
-        "psy-hermes registered (actor=%s, tenant=%s, purpose=%s, version=%s)",
+        "psy-core-hermes registered (actor=%s, tenant=%s, purpose=%s, version=%s)",
         config.actor_id,
         config.tenant_id,
         config.purpose,
@@ -110,7 +110,7 @@ def _wire_hooks(ctx: Any, handlers: HookHandlers) -> None:
     """Subscribe the two hooks. `ctx.register_hook` is the documented API."""
     register_hook = getattr(ctx, "register_hook", None)
     if register_hook is None:
-        LOG.warning("psy-hermes: ctx has no register_hook; nothing wired")
+        LOG.warning("psy-core-hermes: ctx has no register_hook; nothing wired")
         return
     register_hook("pre_tool_call", handlers.pre_tool_call)
     register_hook("post_tool_call", handlers.post_tool_call)

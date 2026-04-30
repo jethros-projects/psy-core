@@ -1,13 +1,13 @@
-# psy-hermes example — auditing a Hermes Agent session
+# psy-core-hermes example — auditing a Hermes Agent session
 
-A self-contained walkthrough that wires `psy-hermes` into a fresh Hermes
+A self-contained walkthrough that wires `psy-core-hermes` into a fresh Hermes
 agent install, exercises a few memory writes, and verifies the
 hash-chained, HMAC-sealed audit log.
 
 ## What this demonstrates
 
-- Installing `psy-hermes` from PyPI alongside `hermes-agent`
-- Inserting the `plugins.psy` block via `psy-hermes init`
+- Installing `psy-core-hermes` from PyPI alongside `hermes-agent`
+- Inserting the `plugins.psy` block via `psy-core-hermes init`
 - Running Hermes interactively while `psy ingest` writes to `~/.psy/audit.db`
 - Inspecting the chain with `psy tail` / `psy query` / `psy verify`
 
@@ -16,7 +16,7 @@ hash-chained, HMAC-sealed audit log.
 - `hermes-config.yaml` — the `~/.hermes/config.yaml` layout with a
   populated `plugins.psy` block.
 - `run.sh` — bootstrap script that installs both sides into a fresh
-  virtualenv + npm-global location, runs `psy-hermes doctor`, and
+  virtualenv + npm-global location, runs `psy-core-hermes doctor`, and
   prints next steps.
 
 ## Walkthrough
@@ -48,5 +48,5 @@ calls, LLM calls, and session lifecycle events are deliberately not
 captured in v0.4 to keep the brand crisp; they'll return as separate
 adapter scopes if there's user demand.
 
-See [`python/psy-hermes/README.md`](../../python/psy-hermes/README.md)
+See [`python/psy-core-hermes/README.md`](../../python/psy-core-hermes/README.md)
 for the full configuration reference and operation table.

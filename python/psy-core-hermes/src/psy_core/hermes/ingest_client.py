@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-LOG = logging.getLogger("psy_hermes.ingest")
+LOG = logging.getLogger("psy_core.hermes.ingest")
 
 #: How many consecutive failures put the client into degraded state.
 MAX_CONSECUTIVE_FAILURES = 3
@@ -87,7 +87,7 @@ def resolve_spawn_plan(psy_binary: str | None, psy_core_version: str) -> IngestS
             description=f"npx:psy-core@{psy_core_version}",
         )
     raise FileNotFoundError(
-        "psy-hermes: neither `psy` nor `npx` was found on PATH. "
+        "psy-core-hermes: neither `psy` nor `npx` was found on PATH. "
         "Install with `npm i -g psy-core` or install Node.js so npx is available."
     )
 
@@ -232,7 +232,7 @@ class IngestClient:
             self._handshake = self._read_handshake(self._proc)
             self._writer_thread = threading.Thread(
                 target=self._run_writer,
-                name="psy-hermes-writer",
+                name="psy-core-hermes-writer",
                 daemon=True,
             )
             self._writer_thread.start()
@@ -328,14 +328,14 @@ class IngestClient:
 
     def _record_failure(self, message: str) -> None:
         self._consecutive_failures += 1
-        self._log.warning("psy-hermes: %s (consecutive=%d)", message, self._consecutive_failures)
+        self._log.warning("psy-core-hermes: %s (consecutive=%d)", message, self._consecutive_failures)
         if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
             self._degraded_until_restart = True
 
     def _maybe_warn(self, message: str) -> None:
         now = time.monotonic()
         if now - self._last_warn_at >= DEGRADED_WARN_INTERVAL_S:
-            self._log.warning("psy-hermes: %s", message)
+            self._log.warning("psy-core-hermes: %s", message)
             self._last_warn_at = now
 
     def _terminate_proc(self, proc: subprocess.Popen[str]) -> None:

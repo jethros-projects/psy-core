@@ -1,4 +1,4 @@
-"""Console scripts for psy-hermes.
+"""Console scripts for psy-core-hermes.
 
 Four subcommands:
 
@@ -22,19 +22,19 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from psy_hermes._version import (
+from psy_core.hermes._version import (
     INGEST_PROTOCOL_VERSION,
     PSY_CORE_VERSION,
     PSY_HERMES_VERSION,
 )
-from psy_hermes.config import PsyHermesConfig, load_psy_config
-from psy_hermes.ingest_client import IngestClient, resolve_spawn_plan
+from psy_core.hermes.config import PsyHermesConfig, load_psy_config
+from psy_core.hermes.ingest_client import IngestClient, resolve_spawn_plan
 
 DEFAULT_CONFIG_PATH = Path.home() / ".hermes" / "config.yaml"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="psy-hermes", description="psy audit adapter for Hermes Agent")
+    parser = argparse.ArgumentParser(prog="psy-core-hermes", description="psy audit adapter for Hermes Agent")
     parser.add_argument("--version", action="version", version=PSY_HERMES_VERSION)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -78,13 +78,13 @@ def _load_config_section(config_path: Path) -> tuple[dict[str, Any], dict[str, A
         import yaml
     except ImportError as exc:
         raise SystemExit(
-            "psy-hermes: PyYAML is required to read ~/.hermes/config.yaml. "
+            "psy-core-hermes: PyYAML is required to read ~/.hermes/config.yaml. "
             "Install it via `pip install pyyaml` (Hermes already depends on it)."
         ) from exc
     raw_text = config_path.read_text(encoding="utf-8")
     raw = yaml.safe_load(raw_text) or {}
     if not isinstance(raw, dict):
-        raise SystemExit(f"psy-hermes: {config_path} is not a YAML mapping at the top level")
+        raise SystemExit(f"psy-core-hermes: {config_path} is not a YAML mapping at the top level")
     plugins = raw.get("plugins") or {}
     psy = plugins.get("psy") if isinstance(plugins, dict) else None
     return raw, psy if isinstance(psy, dict) else {}
@@ -94,7 +94,7 @@ def _write_config(config_path: Path, raw: dict[str, Any]) -> None:
     try:
         import yaml
     except ImportError as exc:
-        raise SystemExit("psy-hermes: PyYAML is required to write ~/.hermes/config.yaml.") from exc
+        raise SystemExit("psy-core-hermes: PyYAML is required to write ~/.hermes/config.yaml.") from exc
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
@@ -105,16 +105,16 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     plugins = raw.setdefault("plugins", {})
     if not isinstance(plugins, dict):
-        raise SystemExit(f"psy-hermes: plugins must be a mapping in {config_path}")
+        raise SystemExit(f"psy-core-hermes: plugins must be a mapping in {config_path}")
     enabled = plugins.setdefault("enabled", [])
     if not isinstance(enabled, list):
-        raise SystemExit(f"psy-hermes: plugins.enabled must be a list in {config_path}")
+        raise SystemExit(f"psy-core-hermes: plugins.enabled must be a list in {config_path}")
     if "psy" not in enabled:
         enabled.append("psy")
 
     psy = plugins.setdefault("psy", {})
     if not isinstance(psy, dict):
-        raise SystemExit(f"psy-hermes: plugins.psy must be a mapping in {config_path}")
+        raise SystemExit(f"psy-core-hermes: plugins.psy must be a mapping in {config_path}")
     psy.setdefault("enabled", True)
     if args.actor_id:
         psy["actor_id"] = args.actor_id
@@ -123,7 +123,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     psy.setdefault("psy_core_version", PSY_CORE_VERSION)
 
     _write_config(config_path, raw)
-    sys.stdout.write(f"psy-hermes: wrote plugins.psy block to {config_path}\n")
+    sys.stdout.write(f"psy-core-hermes: wrote plugins.psy block to {config_path}\n")
     return 0
 
 
@@ -140,7 +140,7 @@ def _resolve_or_empty(args: argparse.Namespace) -> tuple[Path, PsyHermesConfig |
 def cmd_doctor(args: argparse.Namespace) -> int:
     config_path, config, err = _resolve_or_empty(args)
     out = sys.stdout
-    out.write(f"psy-hermes {PSY_HERMES_VERSION} (psy-core pin {PSY_CORE_VERSION})\n")
+    out.write(f"psy-core-hermes {PSY_HERMES_VERSION} (psy-core pin {PSY_CORE_VERSION})\n")
     out.write(f"config:           {config_path}\n")
     if err:
         out.write(f"  status:         INVALID — {err}\n")
@@ -201,11 +201,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     _, config, err = _resolve_or_empty(args)
     if err:
-        sys.stdout.write(f"psy-hermes: config invalid — {err}\n")
+        sys.stdout.write(f"psy-core-hermes: config invalid — {err}\n")
         return 2
     assert config is not None
     sys.stdout.write(
-        f"psy-hermes {PSY_HERMES_VERSION} | "
+        f"psy-core-hermes {PSY_HERMES_VERSION} | "
         f"actor={config.actor_id or '<unset>'} "
         f"redactor={config.redactor} "
         f"dry_run={config.dry_run} "
@@ -216,7 +216,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def cmd_dry_run(args: argparse.Namespace) -> int:
     """Read envelopes from stdin and pretty-print them. Useful for piping
-    `psy-hermes dry-run < some.jsonl` to inspect what the plugin would
+    `psy-core-hermes dry-run < some.jsonl` to inspect what the plugin would
     forward without spawning the ingest subprocess.
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -227,7 +227,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
         try:
             envelope = json.loads(line)
         except json.JSONDecodeError as exc:
-            sys.stderr.write(f"psy-hermes dry-run: invalid JSON: {exc}\n")
+            sys.stderr.write(f"psy-core-hermes dry-run: invalid JSON: {exc}\n")
             continue
         sys.stdout.write(
             json.dumps(

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from psy_hermes.cli import main
+from psy_core.hermes.cli import main
 
 
 def _yaml() -> Any:
@@ -52,7 +52,7 @@ def test_status_reports_one_line(tmp_path: Path, capsys: pytest.CaptureFixture[s
     rc = main(["status", "--config", str(cfg)])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "psy-hermes" in out
+    assert "psy-core-hermes" in out
     assert "actor=alice" in out
 
 

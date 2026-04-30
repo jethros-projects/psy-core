@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from psy_hermes.config import PsyHermesConfig
-from psy_hermes.hooks import _MEMORY_ACTION_MAP, HookHandlers
+from psy_core.hermes.config import PsyHermesConfig
+from psy_core.hermes.hooks import _MEMORY_ACTION_MAP, HookHandlers
 
 
 def test_pre_tool_call_emits_intent_for_memory_add(hooks: HookHandlers, fake_ingest: Any) -> None:
@@ -151,7 +151,7 @@ def test_dry_run_short_circuits_send(
     fake_ingest: Any,
 ) -> None:
     cfg = base_config.model_copy(update={"dry_run": True})
-    from psy_hermes.hooks import make_hook_handlers
+    from psy_core.hermes.hooks import make_hook_handlers
 
     handlers = make_hook_handlers(cfg, fake_ingest, redactor=None)
     handlers.pre_tool_call(

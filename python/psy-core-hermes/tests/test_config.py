@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from psy_hermes._version import PSY_CORE_SCHEMA_VERSION, PSY_CORE_VERSION
-from psy_hermes.config import (
+from psy_core.hermes._version import PSY_CORE_SCHEMA_VERSION, PSY_CORE_VERSION
+from psy_core.hermes.config import (
     PsyHermesConfig,
     format_actor_id_required_error,
     load_psy_config,

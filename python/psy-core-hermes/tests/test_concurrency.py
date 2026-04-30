@@ -5,7 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from psy_hermes.hooks import HookHandlers
+from psy_core.hermes.hooks import HookHandlers
 
 
 def test_thread_pool_does_not_drop_envelopes(hooks: HookHandlers, fake_ingest: Any) -> None:
