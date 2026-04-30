@@ -184,7 +184,7 @@ def _load_skill_events(
     even if the calling code is buggy. The trust boundary is enforced
     by SQLite, not by us.
     """
-    uri = f"file:{db_path}?mode=ro"
+    uri = f"{db_path.resolve().as_uri()}?mode=ro"
     sql = (
         "SELECT seq, timestamp, operation, memory_path, actor_id, session_id "
         "FROM events "

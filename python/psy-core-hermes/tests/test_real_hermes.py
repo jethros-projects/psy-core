@@ -994,16 +994,6 @@ def test_skill_stats_reports_real_churn_through_full_pipeline(
     bin_dir = _node_psy_wrapper(hermes_home)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
-    psy_root = hermes_home / "psy-root"
-    psy_root.mkdir()
-    init = subprocess.run(
-        ["psy", "init", "--no-color"],
-        cwd=psy_root,
-        capture_output=True,
-        text=True,
-    )
-    assert init.returncode == 0, init.stderr
-
     _write_config(hermes_home, {"actor_id": "alice@acme.com", "tenant_id": "acme"})
     mgr = _fresh_manager()
     mgr.discover_and_load()
@@ -1012,7 +1002,6 @@ def test_skill_stats_reports_real_churn_through_full_pipeline(
         for fn in mgr._hooks["pre_tool_call"]
         if hasattr(fn, "__self__") and isinstance(fn.__self__, HookHandlers)
     )
-    handlers.ingest._cwd = psy_root  # type: ignore[attr-defined]
 
     # Pattern: create + 4 patches in tight succession on the same skill —
     # exactly the "unstable" shape the curator at agent/curator.py needs
@@ -1061,8 +1050,10 @@ def test_skill_stats_reports_real_churn_through_full_pipeline(
     time.sleep(2.0)
     handlers.ingest.close()
 
-    # Now read the chain back via psy-core-hermes skill-stats --json.
-    db_path = psy_root / ".psy" / "events.sqlite"
+    # Now read the configured Hermes audit chain back via
+    # psy-core-hermes skill-stats --json. This intentionally uses the
+    # adapter's db_path env wiring rather than a cwd-scoped .psy project.
+    db_path = hermes_home / "psy" / "audit.db"
     psy_hermes_bin = _venv_psy_core_hermes()
     res = subprocess.run(
         [psy_hermes_bin, "skill-stats", "--db-path", str(db_path), "--json"],

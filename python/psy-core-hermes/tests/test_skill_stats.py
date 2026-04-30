@@ -145,6 +145,23 @@ def test_compute_returns_empty_when_db_has_no_skill_events(tmp_path: Path) -> No
     assert compute_skill_stats(db) == []
 
 
+def test_compute_handles_uri_metacharacters_in_db_path(tmp_path: Path) -> None:
+    db = tmp_path / "audit?demo#1.db"
+    _seed_db(
+        db,
+        [
+            {
+                "operation": "create",
+                "memory_path": "/skills/path-safe/SKILL.md",
+                "timestamp": _ts(),
+                "actor_id": "alice",
+            }
+        ],
+    )
+    [m] = compute_skill_stats(db)
+    assert m.skill_name == "path-safe"
+
+
 # ---------------------------------------------------------------------------
 # Single-skill happy path
 # ---------------------------------------------------------------------------

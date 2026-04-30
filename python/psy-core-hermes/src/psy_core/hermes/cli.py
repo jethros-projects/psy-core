@@ -22,7 +22,7 @@ import sys
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from psy_core.hermes._version import (
     INGEST_PROTOCOL_VERSION,
@@ -341,8 +341,8 @@ def _resolve_db_path_for_stats(args: argparse.Namespace) -> Path:
         # Fall back to the default path the config schema would have computed.
         from psy_core.hermes.config import PsyHermesConfig as _Cfg
 
-        return _Cfg().db_path
-    return config.db_path
+        return cast(Path, _Cfg().db_path)
+    return cast(Path, config.db_path)
 
 
 def _parse_since(value: str) -> timedelta:
