@@ -20,6 +20,7 @@ import logging
 import shutil
 import sys
 from collections.abc import Sequence
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     dry_p = sub.add_parser("dry-run", help="emit envelopes locally without spawning ingest")
     dry_p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
 
+    stats_p = sub.add_parser(
+        "skill-stats",
+        help="report skill quality from the audit chain (churn, rapid-patch rate, false starts)",
+    )
+    stats_p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    stats_p.add_argument(
+        "--db-path",
+        help="override db_path from config (read-only access to the psy audit chain)",
+    )
+    stats_p.add_argument(
+        "--actor",
+        dest="actor_id",
+        help="restrict to events from this actor_id",
+    )
+    stats_p.add_argument(
+        "--since",
+        help="restrict to events newer than this window (e.g. 1h, 24h, 7d, 30d)",
+    )
+    stats_p.add_argument(
+        "--top",
+        type=int,
+        default=None,
+        help="show only the N skills with the highest churn",
+    )
+    stats_p.add_argument(
+        "--skill-md-only",
+        action="store_true",
+        help="only count operations on the skill's SKILL.md, not on attached files",
+    )
+    stats_p.add_argument("--json", action="store_true", help="emit JSON instead of a table")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -67,6 +99,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_status(args)
     if args.cmd == "dry-run":
         return cmd_dry_run(args)
+    if args.cmd == "skill-stats":
+        return cmd_skill_stats(args)
     parser.error(f"unknown command {args.cmd}")
     return 2
 
@@ -242,6 +276,102 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
             + "\n"
         )
     return 0
+
+
+def cmd_skill_stats(args: argparse.Namespace) -> int:
+    """Report skill quality from the audit chain.
+
+    Loop 2 of the optimization roadmap: revert-rate as a skill quality
+    signal. The audit chain's tamper-evident ordering makes
+    "patches-since-creation" and "create-then-delete-within-K-events"
+    well-defined queries. Hermes's curator can't currently use usage
+    counters (it explicitly distrusts them); these metrics are the
+    outcome-attribution complement.
+    """
+    from psy_core.hermes.skill_stats import (
+        compute_skill_stats,
+        format_metrics_table,
+    )
+
+    db_path = _resolve_db_path_for_stats(args)
+    since = _parse_since(args.since) if args.since else None
+
+    metrics = compute_skill_stats(
+        db_path,
+        actor_id=args.actor_id,
+        since=since,
+        skill_md_only=args.skill_md_only,
+    )
+    # Sort by churn descending (most-suspect first), then by patch count.
+    metrics.sort(key=lambda m: (m.churn_ratio, m.patch_count), reverse=True)
+    if args.top is not None:
+        metrics = metrics[: args.top]
+
+    if args.json:
+        sys.stdout.write(
+            json.dumps(
+                [m.to_dict() for m in metrics],
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n"
+        )
+        return 0
+
+    sys.stdout.write(format_metrics_table(metrics))
+    # Only emit a hint when we have data and the user didn't ask for JSON.
+    # Helps demo the signal: reading the table alone doesn't tell you what
+    # `unstable` means or what to do about it.
+    if metrics and any(m.status != "ok" for m in metrics):
+        sys.stdout.write(
+            "\nlegend:  unstable = churn>=2.0 or 3+ rapid patches  |  "
+            "short-lived = create+delete within 1 day\n"
+        )
+    return 0
+
+
+def _resolve_db_path_for_stats(args: argparse.Namespace) -> Path:
+    """db_path resolution order for `skill-stats`:
+       --db-path flag > config file > config defaults.
+    """
+    if args.db_path:
+        return Path(args.db_path).expanduser()
+    _, config, err = _resolve_or_empty(args)
+    if err is not None or config is None:
+        # Fall back to the default path the config schema would have computed.
+        from psy_core.hermes.config import PsyHermesConfig as _Cfg
+
+        return _Cfg().db_path
+    return config.db_path
+
+
+def _parse_since(value: str) -> timedelta:
+    """Parse durations like ``1h``, ``24h``, ``7d``, ``30d``.
+
+    Intentionally narrow: only the suffixes a CLI user would type. Big
+    enough to cover real ops needs (last day, last week, last month);
+    not a general-purpose duration parser.
+    """
+    from datetime import timedelta
+
+    if not value:
+        raise SystemExit("psy-core-hermes skill-stats: --since cannot be empty")
+    suffix = value[-1]
+    try:
+        amount = int(value[:-1])
+    except ValueError as exc:
+        raise SystemExit(
+            f"psy-core-hermes skill-stats: --since must look like 1h / 24h / 7d / 30d, got {value!r}"
+        ) from exc
+    if amount <= 0:
+        raise SystemExit("psy-core-hermes skill-stats: --since must be positive")
+    if suffix == "h":
+        return timedelta(hours=amount)
+    if suffix == "d":
+        return timedelta(days=amount)
+    raise SystemExit(
+        f"psy-core-hermes skill-stats: --since suffix must be h or d, got {value!r}"
+    )
 
 
 def _ingest_env(config: PsyHermesConfig) -> dict[str, str]:

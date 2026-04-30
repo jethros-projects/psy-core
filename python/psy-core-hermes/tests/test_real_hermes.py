@@ -42,6 +42,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -965,3 +966,150 @@ def handlers_for_documented_surfaces(hermes_home: Path):
     _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
     mgr = _fresh_manager()
     return _load_psy_into(mgr)
+
+
+# ---------------------------------------------------------------------------
+# Loop 2: skill-stats end-to-end through real Hermes -> real psy ingest
+# ---------------------------------------------------------------------------
+
+
+def test_skill_stats_reports_real_churn_through_full_pipeline(
+    hermes_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end Loop 2: drive a churn pattern (create + 4 quick
+    patches) through real Hermes invoke_hook -> psy_core.hermes
+    handlers -> real `psy ingest` Node subprocess -> SQLite chain ->
+    `psy-core-hermes skill-stats --json` reads it back and reports
+    the skill as unstable.
+
+    This is the integration that makes Loop 2 a useful product
+    feature, not just a library function — a user with a real
+    Hermes install gets an actionable signal out of the audit chain
+    via one CLI command.
+    """
+    if shutil.which("node") is None:
+        pytest.skip("node not on PATH")
+
+    bin_dir = _node_psy_wrapper(hermes_home)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+
+    psy_root = hermes_home / "psy-root"
+    psy_root.mkdir()
+    init = subprocess.run(
+        ["psy", "init", "--no-color"],
+        cwd=psy_root,
+        capture_output=True,
+        text=True,
+    )
+    assert init.returncode == 0, init.stderr
+
+    _write_config(hermes_home, {"actor_id": "alice@acme.com", "tenant_id": "acme"})
+    mgr = _fresh_manager()
+    mgr.discover_and_load()
+    handlers = next(
+        fn.__self__
+        for fn in mgr._hooks["pre_tool_call"]
+        if hasattr(fn, "__self__") and isinstance(fn.__self__, HookHandlers)
+    )
+    handlers.ingest._cwd = psy_root  # type: ignore[attr-defined]
+
+    # Pattern: create + 4 patches in tight succession on the same skill —
+    # exactly the "unstable" shape the curator at agent/curator.py needs
+    # an outcome signal for. Different call_ids per patch so the dedupe
+    # cache doesn't collapse them.
+    skill_args = {"action": "create", "name": "deploy-runbook", "content": "v0"}
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="skill_manage",
+        args=skill_args,
+        tool_call_id="skill-create",
+        session_id="sess-loop2",
+    )
+    mgr.invoke_hook(
+        "post_tool_call",
+        tool_name="skill_manage",
+        args=skill_args,
+        result="created",
+        tool_call_id="skill-create",
+        session_id="sess-loop2",
+    )
+    for i in range(4):
+        patch_args = {
+            "action": "patch",
+            "name": "deploy-runbook",
+            "old_string": f"v{i}",
+            "new_string": f"v{i + 1}",
+        }
+        mgr.invoke_hook(
+            "pre_tool_call",
+            tool_name="skill_manage",
+            args=patch_args,
+            tool_call_id=f"skill-patch-{i}",
+            session_id="sess-loop2",
+        )
+        mgr.invoke_hook(
+            "post_tool_call",
+            tool_name="skill_manage",
+            args=patch_args,
+            result="patched",
+            tool_call_id=f"skill-patch-{i}",
+            session_id="sess-loop2",
+        )
+
+    # Drain the writer thread so all envelopes land in the chain.
+    time.sleep(2.0)
+    handlers.ingest.close()
+
+    # Now read the chain back via psy-core-hermes skill-stats --json.
+    db_path = psy_root / ".psy" / "events.sqlite"
+    psy_hermes_bin = _venv_psy_core_hermes()
+    res = subprocess.run(
+        [psy_hermes_bin, "skill-stats", "--db-path", str(db_path), "--json"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, res.stderr
+    metrics = json.loads(res.stdout)
+    by_name = {m["skill_name"]: m for m in metrics}
+    assert "deploy-runbook" in by_name, f"skill missing from stats: {metrics}"
+    m = by_name["deploy-runbook"]
+    assert m["create_count"] == 1
+    assert m["patch_count"] == 4
+    assert m["churn_ratio"] == 4.0
+    assert m["rapid_patches"] == 4  # all patches are within 1h of the previous event
+    assert m["status"] == "unstable"
+
+
+def test_skill_stats_quiet_when_chain_is_empty(
+    hermes_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A user who has psy-core-hermes installed but hasn't generated any
+    skill activity yet gets a clean empty report — no crash, no noise."""
+    psy_hermes_bin = _venv_psy_core_hermes()
+    nonexistent_db = hermes_home / "no-such.db"
+    res = subprocess.run(
+        [psy_hermes_bin, "skill-stats", "--db-path", str(nonexistent_db), "--json"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0
+    assert json.loads(res.stdout) == []
+
+
+def _venv_psy_core_hermes() -> str:
+    """Resolve the psy-core-hermes console script in the active venv.
+
+    The integration tests don't manipulate PATH for this script, so
+    `shutil.which` doesn't find it. Derive directly from sys.executable
+    instead — that's the python the test is running under, and the
+    console script ships in the same `bin/` directory.
+    """
+    # NOTE: do NOT .resolve() — uv venvs symlink python to the system
+    # interpreter, so resolving would jump to /usr/bin/ where the
+    # console script does not live. The unresolved sys.executable still
+    # points inside the venv's bin directory.
+    candidate = Path(sys.executable).parent / "psy-core-hermes"
+    if not candidate.exists():
+        pytest.skip(f"psy-core-hermes script not found at {candidate}")
+    return str(candidate)

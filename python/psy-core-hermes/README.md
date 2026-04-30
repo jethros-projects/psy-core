@@ -109,7 +109,52 @@ psy-core-hermes init [--actor-id NAME]   # idempotent config block insertion
 psy-core-hermes doctor                   # config + paths + subprocess handshake test
 psy-core-hermes status                   # one-line summary
 psy-core-hermes dry-run < envelopes.jsonl  # emit envelopes locally; never spawn ingest
+psy-core-hermes skill-stats              # skill-quality report from the audit chain
 ```
+
+## Skill-quality reporting (`skill-stats`)
+
+The audit chain isn't just a write log — its tamper-evident ordering makes it a uniquely good signal for *outcome attribution* on skills. `psy-core-hermes skill-stats` reads the chain and reports per-skill churn, rapid-patch counts, and false-start patterns:
+
+```bash
+$ psy-core-hermes skill-stats
+SKILL                            CREATE  PATCH  DEL  CHURN  RAPID  STATUS
+deploy-runbook                        1      7    0   7.00      5  unstable
+flaky-test-recovery                   1      4    0   4.00      4  unstable
+release-checklist                     1      0    0   0.00      0  ok
+
+legend:  unstable = churn>=2.0 or 3+ rapid patches  |  short-lived = create+delete within 1 day
+```
+
+Why this matters: Hermes's curator at `agent/curator.py:283-285` explicitly tells the model *"DO NOT use usage counters as a reason to skip consolidation … 'use=0' is not evidence."* The team knows usage counters are insufficient. The audit chain provides the complementary signal — a skill patched 5 times within an hour of creation is *probably unstable*, no matter how often it's been called. That's a fact the chain can prove via its hash-linked ordering and timestamps.
+
+Useful flags:
+
+```bash
+psy-core-hermes skill-stats --json                # machine-readable
+psy-core-hermes skill-stats --since 7d            # last week only
+psy-core-hermes skill-stats --actor alice@acme    # multi-tenant filter
+psy-core-hermes skill-stats --top 10              # most-suspect 10 only
+psy-core-hermes skill-stats --skill-md-only       # ignore attached files
+psy-core-hermes skill-stats --db-path ~/.psy/audit.db  # explicit DB path
+```
+
+The metrics are also available as a Python library function for users who want to feed the signal into their own tools (Hermes curator integration, dashboards, Atropos quality filters):
+
+```python
+from datetime import timedelta
+from pathlib import Path
+from psy_core.hermes.skill_stats import compute_skill_stats
+
+metrics = compute_skill_stats(
+    Path.home() / ".psy" / "audit.db",
+    actor_id="alice@acme.com",
+    since=timedelta(days=7),
+)
+unstable = [m for m in metrics if m.status == "unstable"]
+```
+
+The DB handle is opened read-only (SQLite `mode=ro` URI), so the read path provably cannot mutate the chain.
 
 ## Architecture
 
