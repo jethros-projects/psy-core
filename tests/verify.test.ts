@@ -21,4 +21,21 @@ describe('verifyStore', () => {
     store.close();
     orphanStore.close();
   });
+
+  it('allows explicitly unattributed result rows without paired intents', async () => {
+    const { store } = await openTempStore();
+    try {
+      store.append(draft({
+        event_id: 'evt-unattr',
+        operation_id: 'manual-edit',
+        audit_phase: 'result',
+        outcome: 'unattributed',
+        tool_output_hash: 'c'.repeat(64),
+      }));
+      const result = verifyStore(store);
+      assert.equal(result.ok, true);
+    } finally {
+      store.close();
+    }
+  });
 });

@@ -112,7 +112,7 @@ def test_watcher_does_not_pair_with_an_old_intent(tmp_path: Path) -> None:
     assert results[0]["outcome"] == "unattributed"
 
 
-def test_watcher_silently_defers_when_memories_dir_is_missing(tmp_path: Path) -> None:
+def test_watcher_creates_memories_dir_before_starting(tmp_path: Path) -> None:
     cfg = PsyHermesConfig(
         actor_id="alice",
         memories_dir=tmp_path / "does" / "not" / "exist",
@@ -122,5 +122,9 @@ def test_watcher_silently_defers_when_memories_dir_is_missing(tmp_path: Path) ->
     fake = FakeIngestClient()
     handlers = make_hook_handlers(cfg, fake, redactor=None)  # type: ignore[arg-type]
     watcher = MemoryWatcher(config=cfg, hooks=handlers, ingest=fake)  # type: ignore[arg-type]
-    watcher.start()  # must not raise
-    assert not watcher._started  # private flag, ok in test code
+    try:
+        watcher.start()  # must not raise
+        assert cfg.memories_dir.exists()
+        assert watcher._started  # private flag, ok in test code
+    finally:
+        watcher.stop()

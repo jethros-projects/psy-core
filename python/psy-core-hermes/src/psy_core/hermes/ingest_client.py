@@ -37,7 +37,7 @@ from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 LOG = logging.getLogger("psy_core.hermes.ingest")
 
@@ -112,8 +112,11 @@ def _scrub_env() -> dict[str, str]:
         "TZ",
         "TMPDIR",
         "PSY_SEAL_KEY",
+        "PSY_SEAL_KEY_PATH",
+        "PSY_HEAD_PATH",
         "PSY_AUDIT_DB_PATH",
         "PSY_DB_PATH",
+        "PSY_ARCHIVES_PATH",
         "NODE_OPTIONS",
         "NPM_CONFIG_REGISTRY",
         "npm_config_cache",
@@ -138,11 +141,13 @@ class IngestClient:
         *,
         plan: IngestSpawnPlan,
         cwd: Path | None = None,
+        env: dict[str, str] | None = None,
         startup_timeout_s: float = STARTUP_TIMEOUT_S,
         log: logging.Logger | None = None,
     ) -> None:
         self._plan = plan
         self._cwd = cwd
+        self._env = env or {}
         self._startup_timeout_s = startup_timeout_s
         self._log = log or LOG
         self._queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=QUEUE_MAX_SIZE)
@@ -216,10 +221,7 @@ class IngestClient:
         if proc:
             if proc.poll() is None:
                 self._terminate_proc(proc)
-            for stream in (proc.stdin, proc.stdout, proc.stderr):
-                if stream is not None:
-                    with suppress(Exception):
-                        stream.close()
+            self._close_proc_streams(proc)
         thread = self._writer_thread
         if thread and thread.is_alive():
             thread.join(timeout=2.0)
@@ -228,8 +230,17 @@ class IngestClient:
         with self._lock:
             if self._proc and self._proc.poll() is None:
                 return
-            self._proc = self._spawn()
-            self._handshake = self._read_handshake(self._proc)
+            proc = self._spawn()
+            try:
+                handshake = self._read_handshake(proc)
+            except Exception:
+                self._terminate_proc(proc)
+                self._close_proc_streams(proc)
+                self._proc = None
+                self._handshake = None
+                raise
+            self._proc = proc
+            self._handshake = handshake
             self._writer_thread = threading.Thread(
                 target=self._run_writer,
                 name="psy-core-hermes-writer",
@@ -248,7 +259,7 @@ class IngestClient:
             text=True,
             bufsize=1,  # line-buffered
             start_new_session=True,
-            env=_scrub_env(),
+            env={**_scrub_env(), **self._env},
         )
 
     def _read_handshake(self, proc: subprocess.Popen[str]) -> dict[str, Any]:
@@ -268,7 +279,7 @@ class IngestClient:
             raise RuntimeError(f"ingest subprocess emitted non-JSON handshake: {line!r}") from exc
         if not parsed.get("ok"):
             raise RuntimeError(f"ingest subprocess refused handshake: {parsed!r}")
-        return parsed
+        return cast(dict[str, Any], parsed)
 
     def _readline_with_deadline(
         self,
@@ -363,6 +374,12 @@ class IngestClient:
                 proc.kill()
         with suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=1.0)
+
+    def _close_proc_streams(self, proc: subprocess.Popen[str]) -> None:
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is not None:
+                with suppress(Exception):
+                    stream.close()
 
 
 def envelopes_from_iterable(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

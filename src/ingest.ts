@@ -185,7 +185,7 @@ export async function appendFromEnvelope(
         memoryPath: envelope.memory_path,
         purpose: envelope.purpose,
         payload,
-        outcome: envelope.outcome === 'unattributed' ? 'success' : envelope.outcome,
+        outcome: envelope.outcome,
       });
     }
     if (options.sealer) {

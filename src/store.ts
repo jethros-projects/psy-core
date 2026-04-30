@@ -170,7 +170,7 @@ export class PsyStore {
 
   appendResult(input: AppendResultInput): StoredEvent {
     const intentSeq = input.intentSeq ?? this.findIntentSeq(input.operation, input.callId);
-    if (intentSeq === null) {
+    if (intentSeq === null && input.outcome !== 'unattributed') {
       throw new Error(`No intent found for result ${input.operation}/${input.callId}`);
     }
 

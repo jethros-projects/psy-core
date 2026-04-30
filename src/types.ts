@@ -36,7 +36,8 @@ export type AuditOutcome =
   | 'audit_timeout'
   | 'rejected_by_path_guard'
   | 'rejected_by_anonymous_check'
-  | 'redactor_failed';
+  | 'redactor_failed'
+  | 'unattributed';
 
 export interface WrapOptions {
   actorId?: string;

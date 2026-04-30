@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 #: (pattern, replacement) tuples. Order is significant.
 DEFAULT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -101,4 +101,4 @@ def resolve_redactor(name: str) -> Redactor | None:
     redactor = getattr(module, attr)
     if not callable(redactor):
         raise TypeError(f"redactor {name!r} is not callable")
-    return redactor
+    return cast(Redactor, redactor)

@@ -37,7 +37,7 @@ def _read_psy_section() -> dict[str, Any] | None:
     contexts that exercise the rest of the plugin in isolation.
     """
     try:
-        from hermes_cli.config import load_config  # type: ignore[import-not-found]
+        from hermes_cli.config import load_config
     except Exception:
         LOG.debug("hermes_cli.config.load_config unavailable; using empty section")
         return None
@@ -84,16 +84,15 @@ def register(ctx: Any) -> None:
         LOG.error("psy-core-hermes: %s", exc)
         return
 
-    ingest = IngestClient(plan=plan)
+    ingest = IngestClient(plan=plan, env=_ingest_env(config))
     redactor = resolve_redactor(config.redactor)
     handlers = make_hook_handlers(config, ingest, redactor)
     watcher = MemoryWatcher(config=config, hooks=handlers, ingest=ingest)
 
     _wire_hooks(ctx, handlers)
 
-    # Best-effort start: if memories_dir doesn't exist yet (fresh Hermes
-    # install) the watcher silently defers. The first memory write creates
-    # the dir; we'll catch subsequent changes.
+    # Best-effort start: the watcher creates memories_dir on fresh Hermes
+    # installs so the first memory write is observable.
     with suppress(Exception):
         watcher.start()
 
@@ -114,6 +113,16 @@ def _wire_hooks(ctx: Any, handlers: HookHandlers) -> None:
         return
     register_hook("pre_tool_call", handlers.pre_tool_call)
     register_hook("post_tool_call", handlers.post_tool_call)
+
+
+def _ingest_env(config: PsyHermesConfig) -> dict[str, str]:
+    """Environment overrides that bind `psy ingest` to Hermes config paths."""
+    return {
+        "PSY_AUDIT_DB_PATH": str(config.db_path),
+        "PSY_ARCHIVES_PATH": str(config.db_path.parent / "archives"),
+        "PSY_SEAL_KEY_PATH": str(config.seal_key_path),
+        "PSY_HEAD_PATH": str(config.seal_key_path.with_name("head.json")),
+    }
 
 
 def build_for_test(

@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -92,6 +93,15 @@ export async function loadConfig(options: ConfigOptions = {}): Promise<{ config:
   try {
     raw = await readFile(paths.configPath, 'utf8');
   } catch (error) {
+    const envSqlitePath = envAuditDbPath(options.cwd);
+    if (envSqlitePath) {
+      const projectRoot = path.dirname(envSqlitePath);
+      const config = normalizeEnvConfig(
+        envSqlitePath,
+        envArchivesPath(projectRoot, options.cwd) ?? path.join(path.dirname(envSqlitePath), 'archives'),
+      );
+      return { config, paths: toConfigPaths(projectRoot, path.join(projectRoot, CONFIG_FILE), config) };
+    }
     throw new PsyConfigInvalid(`Psy config not found at ${paths.configPath}`, {
       cause: error,
       details: { notFound: true, configPath: paths.configPath },
@@ -156,6 +166,15 @@ function normalizeConfig(input: Record<string, unknown>): PsyConfig {
   return parsed.data;
 }
 
+function normalizeEnvConfig(sqlitePath: string, archivesPath: string): PsyConfig {
+  const genesisNonce = readStoredGenesisNonce(sqlitePath);
+  return normalizeConfig({
+    sqlite_path: sqlitePath,
+    archives_path: archivesPath,
+    ...(genesisNonce ? { chain_seed: { nonce: genesisNonce } } : {}),
+  });
+}
+
 async function readConfig(configPath: string): Promise<Record<string, unknown>> {
   try {
     return JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
@@ -168,14 +187,41 @@ async function readConfig(configPath: string): Promise<Record<string, unknown>> 
 }
 
 function toConfigPaths(projectRoot: string, configPath: string, config: PsyConfig): ConfigPaths {
+  const sqlitePath = envAuditDbPath(projectRoot) ?? resolvePath(projectRoot, config.sqlite_path);
   return {
     projectRoot,
     configPath,
-    sqlitePath: resolvePath(projectRoot, config.sqlite_path),
-    archivesPath: resolvePath(projectRoot, config.archives_path),
+    sqlitePath,
+    archivesPath: envArchivesPath(projectRoot) ?? resolvePath(projectRoot, config.archives_path),
   };
 }
 
 function resolvePath(projectRoot: string, value: string): string {
   return path.isAbsolute(value) ? value : path.join(projectRoot, value);
+}
+
+function envAuditDbPath(cwd = process.cwd()): string | null {
+  const raw = process.env.PSY_AUDIT_DB_PATH ?? process.env.PSY_DB_PATH;
+  if (!raw) return null;
+  return resolvePath(cwd, raw);
+}
+
+function envArchivesPath(projectRoot: string, cwd = projectRoot): string | null {
+  const raw = process.env.PSY_ARCHIVES_PATH;
+  if (!raw) return null;
+  return resolvePath(cwd, raw);
+}
+
+function readStoredGenesisNonce(sqlitePath: string): string | null {
+  if (!existsSync(sqlitePath)) return null;
+  let db: Database.Database | null = null;
+  try {
+    db = new Database(sqlitePath, { readonly: true, fileMustExist: true });
+    const row = db.prepare("SELECT value FROM meta WHERE key = 'genesis_nonce'").get() as { value?: unknown } | undefined;
+    return typeof row?.value === 'string' && /^[a-f0-9]{64}$/u.test(row.value) ? row.value : null;
+  } catch {
+    return null;
+  } finally {
+    db?.close();
+  }
 }

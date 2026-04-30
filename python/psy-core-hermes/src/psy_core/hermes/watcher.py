@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import threading
 import time
 from collections.abc import Iterable
@@ -84,15 +85,17 @@ class MemoryWatcher:
     def start(self) -> None:
         """Start the watchdog observer thread.
 
-        Idempotent. If `memories_dir` doesn't exist yet, the watcher
-        defers until it does — Hermes creates the dir on first memory
-        write, so it's normal for it to be missing at session start.
+        Idempotent. A fresh Hermes install may not have `memories_dir` yet,
+        so we create it before subscribing; otherwise the first memory write
+        would happen before any observer exists.
         """
         if self._started:
             return
         memories_dir = self._config.memories_dir
-        if not memories_dir.exists():
-            self._log.debug("memories_dir %s does not exist yet; deferring watcher", memories_dir)
+        try:
+            memories_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self._log.warning("unable to create memories_dir %s: %s", memories_dir, exc)
             return
 
         # Lazy import: watchdog is a heavy import we don't want to pay
@@ -113,7 +116,7 @@ class MemoryWatcher:
             def on_modified(self, event: FileSystemEvent) -> None:
                 if event.is_directory:
                     return
-                path = Path(event.src_path)
+                path = Path(os.fsdecode(event.src_path))
                 if path in watch_paths:
                     watcher._on_change(path)
 
@@ -122,14 +125,14 @@ class MemoryWatcher:
                     return
                 # atomic-rename pattern: a temp file is renamed onto the
                 # watched path. Treat the destination as the change target.
-                dest = Path(getattr(event, "dest_path", "") or "")
+                dest = Path(os.fsdecode(getattr(event, "dest_path", "") or ""))
                 if dest and dest in watch_paths:
                     watcher._on_change(dest)
 
             def on_created(self, event: FileSystemEvent) -> None:
                 if event.is_directory:
                     return
-                path = Path(event.src_path)
+                path = Path(os.fsdecode(event.src_path))
                 if path in watch_paths:
                     watcher._on_change(path)
 

@@ -91,6 +91,19 @@ def test_build_for_test_returns_handlers_and_watcher(tmp_path: Path) -> None:
     assert watcher is not None
 
 
+def test_ingest_env_binds_node_cli_to_config_paths(tmp_path: Path) -> None:
+    cfg = PsyHermesConfig(
+        actor_id="x",
+        db_path=tmp_path / "psy" / "audit.db",
+        seal_key_path=tmp_path / "keys" / "seal-key",
+    )
+    env = register_module._ingest_env(cfg)
+    assert env["PSY_AUDIT_DB_PATH"] == str(tmp_path / "psy" / "audit.db")
+    assert env["PSY_ARCHIVES_PATH"] == str(tmp_path / "psy" / "archives")
+    assert env["PSY_SEAL_KEY_PATH"] == str(tmp_path / "keys" / "seal-key")
+    assert env["PSY_HEAD_PATH"] == str(tmp_path / "keys" / "head.json")
+
+
 def test_wire_hooks_handles_ctx_without_register_hook() -> None:
     class Empty:
         pass

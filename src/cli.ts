@@ -3,6 +3,7 @@ import pc from 'picocolors';
 import { existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
+import path from 'node:path';
 
 import { canonicalJson } from './canonical.js';
 import { initConfig, loadConfig } from './config.js';
@@ -39,7 +40,7 @@ export function createProgram(io: IO = { stdout: process.stdout, stderr: process
       const { paths, created } = await initConfig({ configPath: opts.config });
       const { config } = await loadConfig({ configPath: opts.config });
       const store = new PsyStore({ sqlitePath: paths.sqlitePath, archivesPath: paths.archivesPath, config });
-      const sealPaths = defaultSealPaths(paths.sqlitePath);
+      const sealPaths = sealPathsForStore(paths.sqlitePath);
       const { sealer, keyCreated } = Sealer.bootstrap({
         ...sealPaths,
         envKey: process.env.PSY_SEAL_KEY,
@@ -224,7 +225,7 @@ export function createProgram(io: IO = { stdout: process.stdout, stderr: process
       const { store, sqlitePath } = await openStoreWithPaths();
       let sealer: Sealer | null = null;
       if (opts.seal !== false && sqlitePath !== ':memory:') {
-        const sealPaths = defaultSealPaths(sqlitePath);
+        const sealPaths = sealPathsForStore(sqlitePath);
         sealer = Sealer.bootstrap({ ...sealPaths, envKey: process.env.PSY_SEAL_KEY }).sealer;
       }
       try {
@@ -289,7 +290,7 @@ interface LoadedSealer {
 
 function loadSealerForStore(sqlitePath: string): LoadedSealer {
   if (!sqlitePath) return { sealer: null, keyUnavailable: false };
-  const sealPaths = defaultSealPaths(sqlitePath);
+  const sealPaths = sealPathsForStore(sqlitePath);
   try {
     return {
       sealer: Sealer.load({
@@ -304,6 +305,14 @@ function loadSealerForStore(sqlitePath: string): LoadedSealer {
     // pre-v0.2 install or env-only deployment with seal disabled this run.
     return { sealer: null, keyUnavailable: existsSync(sealPaths.headPath) };
   }
+}
+
+function sealPathsForStore(sqlitePath: string) {
+  const defaults = defaultSealPaths(sqlitePath);
+  return {
+    headPath: process.env.PSY_HEAD_PATH ? path.resolve(process.env.PSY_HEAD_PATH) : defaults.headPath,
+    keyPath: process.env.PSY_SEAL_KEY_PATH ? path.resolve(process.env.PSY_SEAL_KEY_PATH) : defaults.keyPath,
+  };
 }
 
 function formatEvent(event: AuditEvent, color: boolean): string {

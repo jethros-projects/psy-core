@@ -38,7 +38,7 @@ export function verifyStore(store: PsyStore, options: VerifyStoreOptions = {}): 
     }
   }
 
-  const seenPhases = new Map<string, Set<string>>();
+  const seen = new Map<string, { phases: Set<string>; outcomes: Set<string> }>();
   for (const row of rows) {
     if (row.seq !== expectedSeq) {
       issues.push(issue(row, 'seq_gap', `Expected seq ${expectedSeq}, got ${row.seq}`));
@@ -51,18 +51,19 @@ export function verifyStore(store: PsyStore, options: VerifyStoreOptions = {}): 
     if (actual !== row.event_hash) {
       issues.push(issue(row, 'event_hash_mismatch', `Expected event_hash ${actual}, got ${row.event_hash}`));
     }
-    const phases = seenPhases.get(row.operation_id) ?? new Set<string>();
-    phases.add(row.audit_phase);
-    seenPhases.set(row.operation_id, phases);
+    const entry = seen.get(row.operation_id) ?? { phases: new Set<string>(), outcomes: new Set<string>() };
+    entry.phases.add(row.audit_phase);
+    entry.outcomes.add(row.outcome);
+    seen.set(row.operation_id, entry);
     expectedSeq = row.seq + 1;
     expectedPrev = row.event_hash;
   }
 
-  for (const [operationId, phases] of seenPhases) {
+  for (const [operationId, { phases, outcomes }] of seen) {
     if (phases.has('intent') && !phases.has('result')) {
       issues.push({ seq: null, event_id: null, operation_id: operationId, code: 'orphaned_intent', message: 'Intent row has no matching result row' });
     }
-    if (phases.has('result') && !phases.has('intent')) {
+    if (phases.has('result') && !phases.has('intent') && !outcomes.has('unattributed')) {
       issues.push({ seq: null, event_id: null, operation_id: operationId, code: 'result_without_intent', message: 'Result row has no matching intent row' });
     }
   }

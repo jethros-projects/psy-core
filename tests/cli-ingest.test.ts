@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -24,14 +24,26 @@ interface RunResult {
   stderr: string;
 }
 
-async function runIngestSubprocess(cwd: string, lines: string[]): Promise<RunResult> {
+async function runIngestSubprocess(
+  cwd: string,
+  lines: string[],
+  envOverrides: NodeJS.ProcessEnv = {},
+): Promise<RunResult> {
   return new Promise<RunResult>((resolve, reject) => {
     const child = spawn(
       'npx',
       ['tsx', path.join(REPO_ROOT, 'src/cli.ts'), 'ingest'],
       {
         cwd,
-        env: { ...process.env, PSY_AUDIT_DB_PATH: undefined },
+        env: {
+          ...process.env,
+          PSY_AUDIT_DB_PATH: undefined,
+          PSY_DB_PATH: undefined,
+          PSY_ARCHIVES_PATH: undefined,
+          PSY_SEAL_KEY_PATH: undefined,
+          PSY_HEAD_PATH: undefined,
+          ...envOverrides,
+        },
         stdio: ['pipe', 'pipe', 'pipe'],
       },
     );
@@ -113,5 +125,41 @@ describe('psy ingest CLI subcommand', () => {
     } finally {
       process.chdir(initCwd);
     }
+  }, 30_000);
+
+  it('accepts env-provided audit paths without a .psy.json file', async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), 'psy-cli-ingest-env-'));
+    const dbPath = path.join(cwd, 'hermes', 'audit.db');
+    const archivesPath = path.join(cwd, 'hermes', 'archives');
+    const sealKeyPath = path.join(cwd, 'hermes', 'seal-key');
+    const headPath = path.join(cwd, 'hermes', 'head.json');
+    const intent = JSON.stringify({
+      type: 'intent',
+      operation: 'create',
+      call_id: 'call-env-1',
+      identity: { actor_id: 'alice' },
+      memory_path: '/memories/MEMORY.md',
+    });
+    const result = JSON.stringify({
+      type: 'result',
+      operation: 'create',
+      call_id: 'call-env-1',
+      identity: { actor_id: 'alice' },
+      memory_path: '/memories/MEMORY.md',
+    });
+
+    const run = await runIngestSubprocess(cwd, [intent, result], {
+      PSY_AUDIT_DB_PATH: dbPath,
+      PSY_ARCHIVES_PATH: archivesPath,
+      PSY_SEAL_KEY_PATH: sealKeyPath,
+      PSY_HEAD_PATH: headPath,
+    });
+    expect(run.code).toBe(0);
+    const lines = run.stdout.trim().split('\n');
+    expect(JSON.parse(lines[1]!).ok).toBe(true);
+    expect(JSON.parse(lines[2]!).ok).toBe(true);
+    await expect(stat(dbPath)).resolves.toBeTruthy();
+    await expect(stat(sealKeyPath)).resolves.toBeTruthy();
+    await expect(stat(headPath)).resolves.toBeTruthy();
   }, 30_000);
 });

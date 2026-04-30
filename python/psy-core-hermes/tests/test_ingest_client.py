@@ -120,6 +120,44 @@ def test_ingest_client_degrades_when_binary_does_not_exist(tmp_path: Path) -> No
         client.close()
 
 
+def test_ingest_client_clears_process_after_handshake_failure(tmp_path: Path) -> None:
+    binary = tmp_path / "psy"
+    binary.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(2)\n")
+    binary.chmod(0o755)
+    plan = IngestSpawnPlan(argv=[str(binary), "ingest"], description="silent")
+    client = IngestClient(plan=plan, startup_timeout_s=0.1)
+    try:
+        ok = client.send({"type": "intent", "operation": "create", "call_id": "x"})
+        assert ok is False
+        assert client._proc is None  # regression guard for stale child state
+        assert client.handshake is None
+    finally:
+        client.close()
+
+
+def test_ingest_client_passes_configured_env(tmp_path: Path) -> None:
+    probe = tmp_path / "probe"
+    binary = tmp_path / "psy-env"
+    binary.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, pathlib, sys\n"
+        f"pathlib.Path({str(probe)!r}).write_text(os.environ.get('PSY_AUDIT_DB_PATH', ''))\n"
+        "sys.stdout.write(json.dumps({'ok': True, 'version': 'fake', 'schema_version': '1.0.0'}) + '\\n')\n"
+        "sys.stdout.flush()\n"
+        "for line in sys.stdin:\n"
+        "    sys.stdout.write(json.dumps({'ok': True}) + '\\n')\n"
+        "    sys.stdout.flush()\n"
+    )
+    binary.chmod(0o755)
+    plan = IngestSpawnPlan(argv=[str(binary), "ingest"], description="env")
+    client = IngestClient(plan=plan, env={"PSY_AUDIT_DB_PATH": "/tmp/hermes-audit.db"})
+    try:
+        assert client.send({"type": "intent", "operation": "create", "call_id": "env"}) is True
+        assert probe.read_text() == "/tmp/hermes-audit.db"
+    finally:
+        client.close()
+
+
 def test_ingest_client_close_is_idempotent(fake_ingest_binary: Path) -> None:
     plan = IngestSpawnPlan(argv=[str(fake_ingest_binary), "ingest"], description="test")
     client = IngestClient(plan=plan, startup_timeout_s=5.0)

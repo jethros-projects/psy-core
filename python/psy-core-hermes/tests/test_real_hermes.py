@@ -591,6 +591,17 @@ def _node_psy_wrapper(home: Path) -> Path:
     return bin_dir
 
 
+def _psy_env_for_home(home: Path) -> dict[str, str]:
+    """Env that points psy CLI commands at psy-core-hermes' default paths."""
+    return {
+        **os.environ,
+        "PSY_AUDIT_DB_PATH": str(home / "psy" / "audit.db"),
+        "PSY_ARCHIVES_PATH": str(home / "psy" / "archives"),
+        "PSY_SEAL_KEY_PATH": str(home / "psy" / "seal-key"),
+        "PSY_HEAD_PATH": str(home / "psy" / "head.json"),
+    }
+
+
 def test_real_psy_ingest_subprocess_round_trip(
     hermes_home: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -605,16 +616,6 @@ def test_real_psy_ingest_subprocess_round_trip(
     bin_dir = _node_psy_wrapper(hermes_home)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
-    psy_root = hermes_home / "psy-root"
-    psy_root.mkdir()
-    init = subprocess.run(
-        ["psy", "init", "--no-color"],
-        cwd=psy_root,
-        capture_output=True,
-        text=True,
-    )
-    assert init.returncode == 0, init.stderr
-
     _write_config(hermes_home, {"actor_id": "alice@acme.com", "tenant_id": "acme"})
     mgr = _fresh_manager()
     mgr.discover_and_load()
@@ -625,7 +626,6 @@ def test_real_psy_ingest_subprocess_round_trip(
         for fn in mgr._hooks["pre_tool_call"]
         if hasattr(fn, "__self__") and isinstance(fn.__self__, HookHandlers)
     )
-    handlers.ingest._cwd = psy_root  # type: ignore[attr-defined]
 
     # Fire a real intent + result pair through the full stack.
     mgr.invoke_hook(
@@ -649,7 +649,8 @@ def test_real_psy_ingest_subprocess_round_trip(
 
     rows_proc = subprocess.run(
         ["psy", "query", "--actor", "alice@acme.com", "--json"],
-        cwd=psy_root,
+        cwd=hermes_home,
+        env=_psy_env_for_home(hermes_home),
         capture_output=True,
         text=True,
     )
@@ -663,7 +664,8 @@ def test_real_psy_ingest_subprocess_round_trip(
 
     verify_proc = subprocess.run(
         ["psy", "verify", "--no-color"],
-        cwd=psy_root,
+        cwd=hermes_home,
+        env=_psy_env_for_home(hermes_home),
         capture_output=True,
         text=True,
     )
@@ -682,12 +684,8 @@ def test_real_psy_ingest_chain_advances_seal(
 
     bin_dir = _node_psy_wrapper(hermes_home)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-
-    psy_root = hermes_home / "psy-root"
-    psy_root.mkdir()
-    subprocess.run(["psy", "init", "--no-color"], cwd=psy_root, check=True)
-    head_before = (psy_root / ".psy" / "head.json")
-    assert not head_before.exists()
+    head_path = hermes_home / "psy" / "head.json"
+    assert not head_path.exists()
 
     _write_config(hermes_home, {"actor_id": "alice"})
     mgr = _fresh_manager()
@@ -697,7 +695,6 @@ def test_real_psy_ingest_chain_advances_seal(
         for fn in mgr._hooks["pre_tool_call"]
         if hasattr(fn, "__self__") and isinstance(fn.__self__, HookHandlers)
     )
-    handlers.ingest._cwd = psy_root  # type: ignore[attr-defined]
 
     # Fire 3 paired turns.
     for i in range(3):
@@ -720,11 +717,15 @@ def test_real_psy_ingest_chain_advances_seal(
     handlers.ingest.close()
 
     # Head pointer must now exist, and `psy verify` must pass.
-    assert head_before.exists()
-    head = json.loads(head_before.read_text())
+    assert head_path.exists()
+    head = json.loads(head_path.read_text())
     assert head["seq"] == 6  # 3 pairs
     verify = subprocess.run(
-        ["psy", "verify", "--no-color"], cwd=psy_root, capture_output=True, text=True
+        ["psy", "verify", "--no-color"],
+        cwd=hermes_home,
+        env=_psy_env_for_home(hermes_home),
+        capture_output=True,
+        text=True,
     )
     assert verify.returncode == 0
 

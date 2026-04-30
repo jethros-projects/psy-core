@@ -168,16 +168,9 @@ describe('appendFromEnvelope', () => {
     }
   });
 
-  it('records unattributed outcome as success but preserves the call_id', async () => {
+  it('records unattributed results without requiring a matching intent', async () => {
     const { store } = await openTempStore();
     try {
-      await appendFromEnvelope(store, {
-        type: 'intent',
-        operation: 'create',
-        call_id: 'call-unattr',
-        identity: { actor_id: 'alice' },
-        memory_path: '/memories/MEMORY.md',
-      });
       const ack = await appendFromEnvelope(store, {
         type: 'result',
         operation: 'create',
@@ -188,7 +181,9 @@ describe('appendFromEnvelope', () => {
       });
       expect(ack.ok).toBe(true);
       const events = store.query({ actor: 'alice' });
-      expect(events).toHaveLength(2);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.outcome).toBe('unattributed');
+      expect(events[0]?.audit_phase).toBe('result');
     } finally {
       store.close();
     }

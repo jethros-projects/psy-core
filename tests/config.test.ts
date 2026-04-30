@@ -30,4 +30,22 @@ describe('config', () => {
   it('throws stable config errors', async () => {
     await expect(loadConfig({ cwd: await tempProject() })).rejects.toBeInstanceOf(PsyConfigInvalid);
   });
+
+  it('can load from PSY_AUDIT_DB_PATH without a .psy.json file', async () => {
+    const cwd = await tempProject();
+    const previousDb = process.env.PSY_AUDIT_DB_PATH;
+    const previousArchives = process.env.PSY_ARCHIVES_PATH;
+    process.env.PSY_AUDIT_DB_PATH = `${cwd}/hermes/audit.db`;
+    process.env.PSY_ARCHIVES_PATH = `${cwd}/hermes/archives`;
+    try {
+      const { paths } = await loadConfig({ cwd });
+      expect(paths.sqlitePath).toBe(`${cwd}/hermes/audit.db`);
+      expect(paths.archivesPath).toBe(`${cwd}/hermes/archives`);
+    } finally {
+      if (previousDb === undefined) delete process.env.PSY_AUDIT_DB_PATH;
+      else process.env.PSY_AUDIT_DB_PATH = previousDb;
+      if (previousArchives === undefined) delete process.env.PSY_ARCHIVES_PATH;
+      else process.env.PSY_ARCHIVES_PATH = previousArchives;
+    }
+  });
 });

@@ -14,6 +14,7 @@ for everything it might prompt for, so it can be scripted from CI.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import logging
 import shutil
@@ -74,13 +75,7 @@ def _load_config_section(config_path: Path) -> tuple[dict[str, Any], dict[str, A
     """Load the YAML config (or {} if missing). Returns (full, plugins.psy)."""
     if not config_path.exists():
         return {}, {}
-    try:
-        import yaml
-    except ImportError as exc:
-        raise SystemExit(
-            "psy-core-hermes: PyYAML is required to read ~/.hermes/config.yaml. "
-            "Install it via `pip install pyyaml` (Hermes already depends on it)."
-        ) from exc
+    yaml = _yaml_module()
     raw_text = config_path.read_text(encoding="utf-8")
     raw = yaml.safe_load(raw_text) or {}
     if not isinstance(raw, dict):
@@ -91,12 +86,19 @@ def _load_config_section(config_path: Path) -> tuple[dict[str, Any], dict[str, A
 
 
 def _write_config(config_path: Path, raw: dict[str, Any]) -> None:
-    try:
-        import yaml
-    except ImportError as exc:
-        raise SystemExit("psy-core-hermes: PyYAML is required to write ~/.hermes/config.yaml.") from exc
+    yaml = _yaml_module()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+
+def _yaml_module() -> Any:
+    try:
+        return importlib.import_module("yaml")
+    except ImportError as exc:
+        raise SystemExit(
+            "psy-core-hermes: PyYAML is required to read/write ~/.hermes/config.yaml. "
+            "Install it via `pip install pyyaml` (Hermes already depends on it)."
+        ) from exc
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -184,7 +186,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         out.write("  npx on PATH:         no (install Node.js)\n")
 
     out.write("\nHandshake test:\n")
-    client = IngestClient(plan=plan)
+    client = IngestClient(plan=plan, env=_ingest_env(config))
     try:
         try:
             client._ensure_started()
@@ -238,6 +240,15 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
             + "\n"
         )
     return 0
+
+
+def _ingest_env(config: PsyHermesConfig) -> dict[str, str]:
+    return {
+        "PSY_AUDIT_DB_PATH": str(config.db_path),
+        "PSY_ARCHIVES_PATH": str(config.db_path.parent / "archives"),
+        "PSY_SEAL_KEY_PATH": str(config.seal_key_path),
+        "PSY_HEAD_PATH": str(config.seal_key_path.with_name("head.json")),
+    }
 
 
 if __name__ == "__main__":  # pragma: no cover
