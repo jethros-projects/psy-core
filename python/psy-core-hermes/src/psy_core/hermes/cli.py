@@ -176,7 +176,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     plan = resolve_spawn_plan(config.psy_binary, config.psy_core_version)
     out.write(f"  resolved invocation: {plan.description}\n")
     out.write(f"  argv:                {plan.argv}\n")
-    if shutil.which("psy"):
+    if config.psy_binary:
+        out.write(f"  psy_binary:          explicit override in use ({config.psy_binary})\n")
+    elif shutil.which("psy"):
         out.write("  psy on PATH:         yes\n")
     else:
         out.write("  psy on PATH:         no (will use npx fallback)\n")

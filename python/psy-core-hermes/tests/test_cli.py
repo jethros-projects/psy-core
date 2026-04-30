@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 
+import psy_core.hermes.cli as cli_module
 from psy_core.hermes.cli import main
+from psy_core.hermes.ingest_client import IngestSpawnPlan
 
 
 def _yaml() -> Any:
@@ -67,6 +69,53 @@ def test_status_returns_2_on_invalid_config(
     assert rc == 2
     out = capsys.readouterr().out
     assert "config invalid" in out
+
+
+def test_doctor_reports_explicit_psy_binary_without_fallback_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    yaml = _yaml()
+    cfg = tmp_path / "config.yaml"
+    binary = tmp_path / "psy-core-local"
+    cfg.write_text(
+        yaml.safe_dump(
+            {
+                "plugins": {
+                    "enabled": ["psy"],
+                    "psy": {"actor_id": "alice", "psy_binary": str(binary)},
+                },
+            },
+        ),
+    )
+
+    class FakeIngestClient:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.handshake = {"ok": True, "version": "test", "schema_version": "1.0.0"}
+
+        def _ensure_started(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        cli_module,
+        "resolve_spawn_plan",
+        lambda _binary, _version: IngestSpawnPlan(
+            argv=[str(binary), "ingest"],
+            description=f"binary:{binary}",
+        ),
+    )
+    monkeypatch.setattr(cli_module, "IngestClient", FakeIngestClient)
+    monkeypatch.setattr(cli_module.shutil, "which", lambda _name: None)
+
+    rc = main(["doctor", "--config", str(cfg)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert f"psy_binary:          explicit override in use ({binary})" in out
+    assert "will use npx fallback" not in out
 
 
 def test_dry_run_passes_through_envelopes(
