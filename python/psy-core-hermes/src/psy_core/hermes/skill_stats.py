@@ -38,6 +38,7 @@ Design notes:
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -204,7 +205,7 @@ def _load_skill_events(
     sql += " ORDER BY seq ASC"
 
     out: list[_RawEvent] = []
-    with sqlite3.connect(uri, uri=True) as conn:
+    with closing(sqlite3.connect(uri, uri=True)) as conn:
         for seq, ts, op, path, actor, session in conn.execute(sql, params):
             out.append(
                 _RawEvent(

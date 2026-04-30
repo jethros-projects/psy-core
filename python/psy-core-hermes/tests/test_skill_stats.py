@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -76,7 +77,7 @@ def _seed_db(path: Path, events: list[dict[str, Any]]) -> None:
     Only the columns the skill_stats query reads are populated with
     meaningful values; the rest get placeholders to satisfy NOT NULL.
     """
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.executescript(_SCHEMA)
         for i, e in enumerate(events, start=1):
             conn.execute(
@@ -110,6 +111,7 @@ def _seed_db(path: Path, events: list[dict[str, Any]]) -> None:
                     e["memory_path"],
                 ),
             )
+        conn.commit()
 
 
 def _ts(offset_minutes: float = 0.0, *, base: datetime | None = None) -> str:

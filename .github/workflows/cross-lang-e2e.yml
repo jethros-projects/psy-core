@@ -81,7 +81,7 @@ jobs:
         working-directory: python/psy-core-hermes
         run: |
           # We don't need anthropic/openai/etc. — only the plugin manager.
-          .venv/bin/pip install ../../hermes-agent --no-deps
+          uv pip install --python .venv/bin/python ../../hermes-agent --no-deps
       - name: run real-Hermes integration suite (35 tests)
         working-directory: python/psy-core-hermes
         run: |
