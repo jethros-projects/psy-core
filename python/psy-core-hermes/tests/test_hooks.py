@@ -89,6 +89,15 @@ def test_pre_tool_call_dedupes_double_fire(hooks: HookHandlers, fake_ingest: Any
     assert len(fake_ingest.sent) == 1
 
 
+def test_skill_manage_pre_policy_probe_without_tool_call_id_is_ignored(
+    hooks: HookHandlers,
+    fake_ingest: Any,
+) -> None:
+    args = {"action": "create", "name": "demo", "content": "x"}
+    hooks.pre_tool_call(tool_name="skill_manage", args=args, task_id="session-only")
+    assert fake_ingest.sent == []
+
+
 def test_pre_tool_call_does_not_dedupe_across_call_ids(
     hooks: HookHandlers,
     fake_ingest: Any,

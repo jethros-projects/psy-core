@@ -225,8 +225,17 @@ class HookHandlers:
         operation = _operation_for(tool_name, args)
         if operation is None:
             return  # not a write we care about (e.g. memory.list)
+        tool_call_id = kwargs.get("tool_call_id")
+        if tool_name in SKILL_TOOLS and not tool_call_id:
+            # Hermes run_agent.py fires pre_tool_call once for block-policy
+            # checks before normal registry dispatch, but that early call has
+            # only task_id/session context. model_tools.py then fires the
+            # observer pre-hook with the real tool_call_id, followed by
+            # post_tool_call. Auditing the early policy probe creates an
+            # orphaned skill intent that can never pair with a result.
+            return
         call_id = (
-            kwargs.get("tool_call_id")
+            tool_call_id
             or kwargs.get("call_id")
             or kwargs.get("task_id")
             or _args_hash(args)

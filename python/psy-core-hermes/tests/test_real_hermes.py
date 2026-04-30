@@ -519,6 +519,48 @@ def test_dedupe_collapses_double_fire(hermes_home: Path) -> None:
     assert len(handlers.ingest.sent) == 1  # type: ignore[attr-defined]
 
 
+def test_skill_manage_policy_probe_without_tool_call_id_is_not_audited(
+    hermes_home: Path,
+) -> None:
+    """Hermes run_agent.py first calls pre_tool_call for block-policy checks
+    with only task_id. The real observable skill call arrives later from
+    model_tools.py with tool_call_id and is the one that can pair with
+    post_tool_call.
+    """
+    _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+    args = {"action": "create", "name": "demo", "content": "x"}
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="skill_manage",
+        args=args,
+        task_id="session-only",
+    )
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="skill_manage",
+        args=args,
+        task_id="session-only",
+        session_id="session-only",
+        tool_call_id="real-call",
+    )
+    mgr.invoke_hook(
+        "post_tool_call",
+        tool_name="skill_manage",
+        args=args,
+        result="created",
+        task_id="session-only",
+        session_id="session-only",
+        tool_call_id="real-call",
+    )
+
+    sent = handlers.ingest.sent  # type: ignore[attr-defined]
+    assert [env["type"] for env in sent] == ["intent", "result"]
+    assert {env["call_id"] for env in sent} == {"real-call"}
+
+
 def test_dedupe_does_not_collapse_distinct_calls(hermes_home: Path) -> None:
     _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
     mgr = _fresh_manager()
