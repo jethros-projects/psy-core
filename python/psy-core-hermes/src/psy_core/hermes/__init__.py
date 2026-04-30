@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from psy_core.hermes._version import (
     INGEST_PROTOCOL_VERSION,
+    PSY_CORE_HERMES_VERSION,
     PSY_CORE_SCHEMA_VERSION,
     PSY_CORE_VERSION,
-    PSY_HERMES_VERSION,
 )
 
 # The Hermes plugin entry point is `psy_core.hermes.register:register` (see
@@ -29,9 +29,9 @@ from psy_core.hermes._version import (
 # anything that depends on submodule-level monkeypatching.
 __all__ = [
     "INGEST_PROTOCOL_VERSION",
+    "PSY_CORE_HERMES_VERSION",
     "PSY_CORE_SCHEMA_VERSION",
     "PSY_CORE_VERSION",
-    "PSY_HERMES_VERSION",
 ]
 
-__version__ = PSY_HERMES_VERSION
+__version__ = PSY_CORE_HERMES_VERSION

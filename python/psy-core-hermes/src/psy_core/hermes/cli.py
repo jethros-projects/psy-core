@@ -24,8 +24,8 @@ from typing import Any
 
 from psy_core.hermes._version import (
     INGEST_PROTOCOL_VERSION,
+    PSY_CORE_HERMES_VERSION,
     PSY_CORE_VERSION,
-    PSY_HERMES_VERSION,
 )
 from psy_core.hermes.config import PsyHermesConfig, load_psy_config
 from psy_core.hermes.ingest_client import IngestClient, resolve_spawn_plan
@@ -35,7 +35,7 @@ DEFAULT_CONFIG_PATH = Path.home() / ".hermes" / "config.yaml"
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="psy-core-hermes", description="psy audit adapter for Hermes Agent")
-    parser.add_argument("--version", action="version", version=PSY_HERMES_VERSION)
+    parser.add_argument("--version", action="version", version=PSY_CORE_HERMES_VERSION)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     init_p = sub.add_parser("init", help="insert plugins.psy block into ~/.hermes/config.yaml")
@@ -140,7 +140,7 @@ def _resolve_or_empty(args: argparse.Namespace) -> tuple[Path, PsyHermesConfig |
 def cmd_doctor(args: argparse.Namespace) -> int:
     config_path, config, err = _resolve_or_empty(args)
     out = sys.stdout
-    out.write(f"psy-core-hermes {PSY_HERMES_VERSION} (psy-core pin {PSY_CORE_VERSION})\n")
+    out.write(f"psy-core-hermes {PSY_CORE_HERMES_VERSION} (psy-core pin {PSY_CORE_VERSION})\n")
     out.write(f"config:           {config_path}\n")
     if err:
         out.write(f"  status:         INVALID — {err}\n")
@@ -205,7 +205,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         return 2
     assert config is not None
     sys.stdout.write(
-        f"psy-core-hermes {PSY_HERMES_VERSION} | "
+        f"psy-core-hermes {PSY_CORE_HERMES_VERSION} | "
         f"actor={config.actor_id or '<unset>'} "
         f"redactor={config.redactor} "
         f"dry_run={config.dry_run} "
