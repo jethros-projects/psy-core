@@ -46,13 +46,14 @@ The Python plugin lives under `python/psy-core-hermes/` and ships separately to 
 Version-pinning protocol:
 
 1. Bump `python/psy-core-hermes/pyproject.toml` `version` first.
-2. Update the `psy_core_version` constant in `python/psy-core-hermes/src/psy_core/hermes/_version.py` to the EXACT JS version that this Python release targets. Never `latest`, never a range.
-3. The cross-language e2e workflow (`.github/workflows/cross-lang-e2e.yml`) verifies that `psy-core-hermes` can spawn `psy-core` of the pinned version end-to-end. CI fails the Python release if the pinned JS version no longer ingests cleanly.
-4. Tag and publish:
+2. Update `PSY_CORE_HERMES_VERSION` in `python/psy-core-hermes/src/psy_core/hermes/_version.py` to match the PyPI package version.
+3. Keep `PSY_CORE_VERSION` in that same file pinned to the EXACT npm `psy-core` version that this Python release targets. Never `latest`, never a range.
+4. The cross-language e2e workflow (`.github/workflows/cross-lang-e2e.yml`) verifies that `psy-core-hermes` can spawn `psy-core` of the pinned version end-to-end. CI fails the Python release if the pinned JS version no longer ingests cleanly.
+5. Tag and publish:
     - `git tag -a psy-core-hermes-vX.Y.Z -m "psy-core-hermes vX.Y.Z — <summary>"`
     - `git push origin psy-core-hermes-vX.Y.Z`
 
-The PyPI workflow runs `uv build` and publishes via the `PYPI_TOKEN` repository secret.
+The PyPI workflow runs `uv build` and publishes via PyPI Trusted Publishing.
 
 ## Cross-package compatibility
 

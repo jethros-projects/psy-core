@@ -21,6 +21,10 @@ This adds a `plugins.psy` block to `~/.hermes/config.yaml`. Then run Hermes as u
 
 If `psy` is not on your PATH, the plugin falls back to `npx -y psy-core@<exact-version> psy ingest`. Most modern dev machines already have Node.js, so this Just Works; if you want to skip the npx round-trip, install psy-core globally with `npm i -g psy-core`.
 
+### Versioning note
+
+`psy-core-hermes` has its own PyPI version. The initial adapter release line is `0.1.x`. The `psy_core_version` config below is the npm `psy-core` version used for the Node `psy ingest` fallback, not the Python package version.
+
 ## What gets captured
 
 Every memory mutation Hermes exposes, mapped to psy-core's canonical operation vocabulary.
@@ -38,13 +42,13 @@ Every mutation produces a paired intent + result row, the same shape as every ot
 
 ## Hermes memory surface — what's captured and what's not
 
-Hermes has more than one kind of memory. v0.4 deliberately covers the file-backed `memory` tool plus `skill_manage`, and explicitly stays out of the way of everything else. The boundary is pinned by tests at `tests/test_real_hermes.py`.
+Hermes has more than one kind of memory. The initial adapter scope deliberately covers the file-backed `memory` tool plus `skill_manage`, and explicitly stays out of the way of everything else. The boundary is pinned by tests at `tests/test_real_hermes.py`.
 
-| # | Surface | Hookable? | v0.4 |
+| # | Surface | Hookable? | Captured? |
 |---|---|:---:|:---:|
 | 1 | `memory` tool — `add/replace/remove × {memory,user}` writing MEMORY.md / USER.md | ✅ via `pre_tool_call` + filesystem watcher | **Captured** |
 | 2 | `skill_manage` tool — SKILL.md + sub-files | ✅ via `pre_tool_call` + `post_tool_call` | **Captured** |
-| 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` (verified at `run_agent.py:9051`'s `_invoke_tool` block — the hook fires before `memory_manager.handle_tool_call`) | **Not captured** in v0.4. Write-tool capture is the single largest v0.5 candidate; turn-on is one allowlist edit. |
+| 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` (verified at `run_agent.py:9051`'s `_invoke_tool` block — the hook fires before `memory_manager.handle_tool_call`) | **Not captured** in the initial scope. MemoryProvider write-tool capture is the largest likely future expansion; turn-on is one allowlist edit. |
 | 4 | MemoryProvider lifecycle hooks (`sync_turn`, `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `on_delegation`) | Subclass-only — `MemoryManager.add_provider` is single-select, so subclassing locks the user out of running Honcho/Mem0/Hindsight alongside psy | Out of scope (architectural — would require psy-core-hermes to BE the user's MemoryProvider, which the plan explicitly rejected) |
 | 5 | `session_search` (read-only SessionDB query) | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`, no post) | Not captured (read-only) |
 | 6 | `todo` tool | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`) | Not captured (not memory) |
@@ -91,7 +95,7 @@ plugins:
     seal_key_path: ~/.psy/seal-key   # optional
     memories_dir: ~/.hermes/memories # filesystem-watched dir
 
-    psy_core_version: 0.4.0          # exact pin (used for npx fallback)
+    psy_core_version: 0.4.0          # npm psy-core pin (used for npx fallback)
     psy_binary: null                 # optional override
 
     redactor: default                # default | none | "<dotted_path>"

@@ -45,7 +45,7 @@ You should see paired `intent` + `result` rows for each memory mutation.
 This example is **memory-only** — it captures every memory mutation
 Hermes performs (MEMORY.md, USER.md, skills) and nothing else. Tool
 calls, LLM calls, and session lifecycle events are deliberately not
-captured in v0.4 to keep the brand crisp; they'll return as separate
+captured in the initial Hermes adapter scope; they'll return as separate
 adapter scopes if there's user demand.
 
 See [`python/psy-core-hermes/README.md`](../../python/psy-core-hermes/README.md)

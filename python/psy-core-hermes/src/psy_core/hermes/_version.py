@@ -1,15 +1,15 @@
 """Version pins for psy-core-hermes.
 
-The exact JS version of psy-core that this Python release ships against.
-The npx fallback uses this exact value (never a range, never `latest`) so a
-pinned Python release always boots against a known-compatible TypeScript
-ingest binary. Bump together with `pyproject.toml::project.version`.
+The exact JS version of psy-core that this Python package release ships
+against. The npx fallback uses this exact value (never a range, never
+`latest`) so a pinned Python release always boots against a known-compatible
+TypeScript ingest binary.
 """
 
 from __future__ import annotations
 
 #: This package's version (must match pyproject.toml).
-PSY_CORE_HERMES_VERSION: str = "0.1.0"
+PSY_CORE_HERMES_VERSION: str = "0.1.1"
 
 #: The exact psy-core JS version this release pins. The npx fallback runs
 #: `npx -y psy-core@<PSY_CORE_VERSION> psy ingest`. The cross-lang-e2e CI

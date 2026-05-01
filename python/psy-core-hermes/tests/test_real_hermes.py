@@ -774,14 +774,14 @@ def test_real_psy_ingest_chain_advances_seal(
 
 
 # ---------------------------------------------------------------------------
-# Memory surface boundary — pins down which memory types v0.4 captures
+# Memory surface boundary — pins down which memory types the initial adapter captures
 # ---------------------------------------------------------------------------
 #
 # Hermes has many memory surfaces beyond the file-backed `memory` tool:
 #
 #   1. memory tool (MEMORY.md / USER.md)         — captured ✅
 #   2. skill_manage tool (SKILL.md)              — captured ✅
-#   3. MemoryProvider plugins (Honcho, Mem0,     — NOT captured in v0.4
+#   3. MemoryProvider plugins (Honcho, Mem0,     — NOT captured initially
 #      Hindsight, Byterover, Holographic,          (deliberate scope decision;
 #      OpenViking, RetainDB, Supermemory) —        the user's choice of provider
 #      each exposes its own tool names that         is single-select via
@@ -800,8 +800,8 @@ def test_real_psy_ingest_chain_advances_seal(
 
 #: Names of write-y tools exposed by every bundled MemoryProvider in
 #: hermes-agent v0.11.0 (sourced by inspecting plugins/memory/*/__init__.py).
-#: When v0.5 adds MemoryProvider observability, these are the names to
-#: turn on. Until then, our v0.4 plugin must NOT emit envelopes for them.
+#: If a later adapter release adds MemoryProvider observability, these are
+#: the names to turn on. Until then, the plugin must NOT emit envelopes for them.
 MEMORY_PROVIDER_WRITE_TOOLS: list[str] = [
     # Honcho
     "honcho_conclude",
@@ -844,14 +844,14 @@ MEMORY_PROVIDER_READ_TOOLS: list[str] = [
 
 
 @pytest.mark.parametrize("tool_name", MEMORY_PROVIDER_WRITE_TOOLS)
-def test_memory_provider_write_tools_are_not_captured_in_v04(
+def test_memory_provider_write_tools_are_not_captured_in_initial_scope(
     hermes_home: Path, tool_name: str,
 ) -> None:
-    """Every MemoryProvider write-tool must produce ZERO envelopes in v0.4.
+    """Every MemoryProvider write-tool must produce ZERO envelopes initially.
 
     These tools DO go through Hermes's pre_tool_call (verified — they
     dispatch through ``_invoke_tool`` which fires the hook before
-    ``memory_manager.handle_tool_call``). The v0.4 plugin filters them
+    ``memory_manager.handle_tool_call``). The current plugin filters them
     out by tool name; this test pins that boundary so accidental
     expansion (e.g. switching to a denylist) fails loud.
     """
@@ -882,7 +882,7 @@ def test_memory_provider_read_tools_are_not_captured(
     hermes_home: Path, tool_name: str,
 ) -> None:
     """Read-y MemoryProvider tools (search/recall/profile) are not memory
-    writes, so they must produce no envelopes — even if v0.5 adds
+    writes, so they must produce no envelopes — even if a later release adds
     write-tool capture they should still stay quiet."""
     _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
     mgr = _fresh_manager()
@@ -900,7 +900,7 @@ def test_memory_provider_read_tools_are_not_captured(
 
 def test_session_search_is_not_captured(hermes_home: Path) -> None:
     """session_search (read-only SessionDB query) is in _AGENT_LOOP_TOOLS
-    upstream and out of scope for v0.4."""
+    upstream and out of scope for the current adapter."""
     _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})
     mgr = _fresh_manager()
     handlers = _load_psy_into(mgr)
@@ -961,7 +961,7 @@ def test_built_in_memory_writes_remain_paired_when_external_provider_is_active(
         session_id="s1",
     )
     # Hermes-internal fan-out (provider mirror). Goes through pre_tool_call
-    # in the agent loop; v0.4 must not emit a second envelope.
+    # in the agent loop; the current adapter must not emit a second envelope.
     mgr.invoke_hook(
         "pre_tool_call",
         tool_name="honcho_conclude",
@@ -989,7 +989,7 @@ def test_documented_uncapturable_surfaces_have_no_hook(hermes_home: Path) -> Non
     valid = hermes_plugins.VALID_HOOKS
     # As of hermes-agent v0.11.0, none of these names are valid hook
     # events. If any of these flips to True in a future release, this
-    # test will fail and prompt a v0.5 scope expansion conversation.
+    # test will fail and prompt a future scope expansion conversation.
     for name in (
         "memory_write",          # post-write fan-out for the memory tool
         "session_db_write",      # SessionDB persistence
