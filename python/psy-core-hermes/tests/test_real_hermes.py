@@ -23,9 +23,8 @@ Coverage:
   block directive (returning anything truthy could veto a tool call).
 - Hook handler exception isolation: a raise inside our handler must NOT
   escape into Hermes's invoke_hook loop.
-- Dedupe under double-fire (Hermes's invoke_hook fires once per turn
-  per call site; in real flow run_agent.py + model_tools.py each fire
-  once for a normal-registry tool).
+- Dedupe under double-fire (Hermes has had more than one hook call site
+  across releases; duplicate pre_tool_call events must still collapse).
 - ``actor_id`` enforcement: missing actor_id with allow_anonymous=false
   -> emit F4 error to stderr, do NOT register hooks.
 - ``allow_anonymous: true`` bypass.
@@ -54,7 +53,7 @@ import pytest
 # Skip the entire module if hermes-agent isn't installed.
 hermes_plugins = pytest.importorskip(
     "hermes_cli.plugins",
-    reason="hermes-agent is not installed; install with `pip install hermes-agent`",
+    reason="hermes-agent is not installed in this Python environment",
 )
 hermes_config = pytest.importorskip("hermes_cli.config")
 
@@ -785,8 +784,8 @@ def test_real_psy_ingest_chain_advances_seal(
 #      Hindsight, Byterover, Holographic,          (deliberate scope decision;
 #      OpenViking, RetainDB, Supermemory) —        the user's choice of provider
 #      each exposes its own tool names that         is single-select via
-#      DO go through pre_tool_call (verified at     MemoryManager.add_provider,
-#      run_agent.py:9051's _invoke_tool block).     and we don't subclass it)
+#      DO go through pre_tool_call in the           MemoryManager.add_provider,
+#      Hermes tool dispatcher.                     and we don't subclass it)
 #   4. session_search                            — NOT captured (read-only)
 #   5. todo                                      — NOT captured (not memory)
 #   6. SessionDB writes                          — no upstream hook
@@ -798,8 +797,8 @@ def test_real_psy_ingest_chain_advances_seal(
 # accidentally start emitting envelopes for the un-captured surfaces fail
 # loud rather than silently expand scope.
 
-#: Names of write-y tools exposed by every bundled MemoryProvider in
-#: hermes-agent v0.11.0 (sourced by inspecting plugins/memory/*/__init__.py).
+#: Names of write-y tools exposed by bundled MemoryProviders in hermes-agent
+#: v0.11.0/v0.12.0 (sourced by inspecting plugins/memory/*/__init__.py).
 #: If a later adapter release adds MemoryProvider observability, these are
 #: the names to turn on. Until then, the plugin must NOT emit envelopes for them.
 MEMORY_PROVIDER_WRITE_TOOLS: list[str] = [
@@ -935,8 +934,8 @@ def test_todo_tool_is_not_captured(hermes_home: Path) -> None:
 def test_built_in_memory_writes_remain_paired_when_external_provider_is_active(
     hermes_home: Path,
 ) -> None:
-    """At run_agent.py:9098, after the file-backed memory tool runs, Hermes
-    fans out via ``memory_manager.on_memory_write(...)`` to any active
+    """After the file-backed memory tool runs, Hermes fans out via
+    ``memory_manager.on_memory_write(...)`` to any active
     external MemoryProvider (Honcho/Mem0/etc.) so the provider can mirror
     the write semantically. psy-core-hermes (audit) and the provider (recall)
     are complementary observers of the SAME write, not competing writers.

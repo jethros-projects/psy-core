@@ -6,12 +6,13 @@
 #   ./run.sh --actor-id you@example.com [--with-hermes]
 #
 # By default this only installs psy-core-hermes and psy-core; pass --with-hermes
-# to also install hermes-agent from PyPI (requires Python >=3.11).
+# to also install Hermes Agent from GitHub (requires Python >=3.11).
 
 set -euo pipefail
 
 ACTOR_ID=""
 WITH_HERMES=false
+HERMES_AGENT_REF="${HERMES_AGENT_REF:-v2026.4.30}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,7 +29,7 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 --actor-id NAME [--with-hermes]
 
   --actor-id NAME    actor_id to write into ~/.hermes/config.yaml
-  --with-hermes      also install hermes-agent from PyPI
+  --with-hermes      also install Hermes Agent from GitHub
 EOF
       exit 0
       ;;
@@ -58,8 +59,8 @@ echo "==> installing psy-core-hermes"
 pip install -e ../../python/psy-core-hermes
 
 if $WITH_HERMES; then
-  echo "==> installing hermes-agent"
-  pip install 'hermes-agent>=0.11,<0.12'
+  echo "==> installing hermes-agent from GitHub ($HERMES_AGENT_REF)"
+  pip install "git+https://github.com/NousResearch/hermes-agent.git@${HERMES_AGENT_REF}"
 fi
 
 echo "==> installing psy-core CLI globally (so 'psy' is on PATH)"
@@ -80,13 +81,13 @@ cat <<EOF
 Next steps:
 
   1. Watch the audit chain:
-       $ROOT/.venv/bin/psy tail
+       psy tail
 
   2. In another terminal, run Hermes (requires --with-hermes if you
      didn't pass it):
        $ROOT/.venv/bin/hermes
 
   3. Verify the chain after a few memory writes:
-       $ROOT/.venv/bin/psy verify --all
+       psy verify --all
 
 EOF

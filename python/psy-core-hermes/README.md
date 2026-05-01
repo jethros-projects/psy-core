@@ -48,7 +48,7 @@ Hermes has more than one kind of memory. The initial adapter scope deliberately 
 |---|---|:---:|:---:|
 | 1 | `memory` tool — `add/replace/remove × {memory,user}` writing MEMORY.md / USER.md | ✅ via `pre_tool_call` + filesystem watcher | **Captured** |
 | 2 | `skill_manage` tool — SKILL.md + sub-files | ✅ via `pre_tool_call` + `post_tool_call` | **Captured** |
-| 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` (verified at `run_agent.py:9051`'s `_invoke_tool` block — the hook fires before `memory_manager.handle_tool_call`) | **Not captured** in the initial scope. MemoryProvider write-tool capture is the largest likely future expansion; turn-on is one allowlist edit. |
+| 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` in Hermes's tool dispatcher, before `memory_manager.handle_tool_call` | **Not captured** in the initial scope. MemoryProvider write-tool capture is the largest likely future expansion; turn-on is one allowlist edit. |
 | 4 | MemoryProvider lifecycle hooks (`sync_turn`, `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `on_delegation`) | Subclass-only — `MemoryManager.add_provider` is single-select, so subclassing locks the user out of running Honcho/Mem0/Hindsight alongside psy | Out of scope (architectural — would require psy-core-hermes to BE the user's MemoryProvider, which the plan explicitly rejected) |
 | 5 | `session_search` (read-only SessionDB query) | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`, no post) | Not captured (read-only) |
 | 6 | `todo` tool | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`) | Not captured (not memory) |
@@ -57,7 +57,7 @@ Hermes has more than one kind of memory. The initial adapter scope deliberately 
 | 9 | `flush_memories()` auxiliary writes | ❌ no upstream hook | Out of scope (would need an upstream PR) |
 | 10 | Gateway transport events | Separate `gateway/hooks.py` registry | Separate adapter scope |
 
-Note on #3 ↔ #1: at `run_agent.py:9098`, when the file-backed `memory` tool runs, Hermes also calls `memory_manager.on_memory_write(...)` so any active external MemoryProvider can mirror the write semantically. That makes psy-core-hermes (audit) and Honcho/Mem0 (semantic recall) **complementary observers of the same write**, not competing writers — they're additive.
+Note on #3 ↔ #1: when the file-backed `memory` tool runs, Hermes also calls `memory_manager.on_memory_write(...)` so any active external MemoryProvider can mirror the write semantically. That makes psy-core-hermes (audit) and Honcho/Mem0 (semantic recall) **complementary observers of the same write**, not competing writers — they're additive.
 
 If you need Mem0/Letta/LangChain memory audited at the API level (rather than via Hermes's tool dispatch), psy-core ships dedicated adapters for those frameworks; see the [adapter table in the root README](../../README.md#supported-memory-frameworks).
 
@@ -198,11 +198,11 @@ psy verify --all   # full chain integrity check + sealed-tail verify
 
 The TS-side `psy verify` reads `~/.psy/audit.db`, walks the hash chain, validates the HMAC seal, and exits non-zero on any tampering.
 
-### Verified against hermes-agent v0.11.0
+### Verified against hermes-agent v0.11.0 and v0.12.0
 
 The plugin contract was source-verified against
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at
-v0.11.0:
+v0.11.0 (`v2026.4.23`) and v0.12.0 (`v2026.4.30`):
 
 - Entry-point group is `hermes_agent.plugins`; the loader does
   `ep.load()` and then `getattr(module, "register")`, so our entry-point
@@ -220,6 +220,9 @@ v0.11.0:
 - Hook callback signature: keyword-only
   `(*, tool_name, args, task_id, session_id, tool_call_id, **_)`.
 - `hermes_cli.config.load_config()` returns the parsed YAML as a dict.
+- v0.12.0's Curator adds `.usage.json` counters and autonomous skill
+  maintenance, but the real-Hermes test suite still passes: psy-core-hermes
+  remains an external tamper-evident audit observer, not Hermes's curator.
 
 A live integration test that loads our plugin into a real Hermes
 `PluginManager` and asserts captured envelopes is part of the e2e

@@ -9,7 +9,7 @@ TypeScript ingest binary.
 from __future__ import annotations
 
 #: This package's version (must match pyproject.toml).
-PSY_CORE_HERMES_VERSION: str = "0.1.1"
+PSY_CORE_HERMES_VERSION: str = "0.1.2"
 
 #: The exact psy-core JS version this release pins. The npx fallback runs
 #: `npx -y psy-core@<PSY_CORE_VERSION> psy ingest`. The cross-lang-e2e CI

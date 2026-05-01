@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "psy-core-hermes"
-version = "0.1.1"
+version = "0.1.2"
 description = "Tamper-evident memory audit log for Hermes Agent. Hash-chained, HMAC-sealed. Plain plugin observer that forwards every memory mutation to the psy-core audit chain."
 readme = "README.md"
 license = { text = "MIT" }
@@ -42,13 +42,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# `hermes-agent` is the runtime host that loads us via the
-# `hermes_agent.plugins` entry point. We don't import any symbol from it
-# directly — the soft `hermes_cli.config.load_config` import in `register`
-# falls back to defaults if Hermes isn't installed — so we list it as an
-# optional extra. The standard install for users running this against a
-# real Hermes is `pip install psy-core-hermes[hermes]`.
-hermes = ["hermes-agent>=0.11,<0.12"]
 dev = [
   "pytest>=8,<9",
   "pytest-asyncio>=0.23,<1",
@@ -67,7 +60,7 @@ Changelog = "https://github.com/jethros-projects/psy-core/blob/main/CHANGELOG.md
 # `register` on the returned object. That means the entry-point value
 # must point at the MODULE (so `ep.load()` returns the module, and
 # `getattr(module, "register")` resolves to our function), not at the
-# function attribute. Verified against hermes-agent v0.11.0 at
+# function attribute. Verified against hermes-agent v0.11.0 and v0.12.0 at
 # hermes_cli/plugins.py: `_load_entrypoint_module` returns `ep.load()`,
 # `_load_plugin` calls `getattr(module, "register", None)`.
 psy = "psy_core.hermes.register"

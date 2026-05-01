@@ -6,7 +6,7 @@ hash-chained, HMAC-sealed audit log.
 
 ## What this demonstrates
 
-- Installing `psy-core-hermes` from PyPI alongside `hermes-agent`
+- Installing `psy-core-hermes` from PyPI into a Hermes-compatible Python env
 - Inserting the `plugins.psy` block via `psy-core-hermes init`
 - Running Hermes interactively while `psy ingest` writes to `~/.psy/audit.db`
 - Inspecting the chain with `psy tail` / `psy query` / `psy verify`
@@ -22,11 +22,14 @@ hash-chained, HMAC-sealed audit log.
 ## Walkthrough
 
 ```bash
-# 1. Bootstrap (creates a venv at .venv/ and installs both sides)
+# 1. Bootstrap (creates a venv at .venv/ and installs psy-core-hermes)
 ./run.sh --actor-id you@example.com
 
+# To also install Hermes Agent from GitHub into that venv:
+./run.sh --actor-id you@example.com --with-hermes
+
 # 2. In one terminal, watch psy tail:
-.venv/bin/psy tail
+psy tail
 
 # 3. In another terminal, drive Hermes:
 .venv/bin/hermes
@@ -34,7 +37,7 @@ hash-chained, HMAC-sealed audit log.
 > recall my preferences
 
 # 4. Verify the chain:
-.venv/bin/psy verify --all
+psy verify --all
 ```
 
 You should see paired `intent` + `result` rows for each memory mutation.
