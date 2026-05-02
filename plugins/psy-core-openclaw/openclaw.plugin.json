@@ -1,0 +1,109 @@
+{
+  "id": "psy-core",
+  "name": "psy-core",
+  "description": "Tamper-evident audit adapter for OpenClaw memory and skill access.",
+  "activation": {
+    "onStartup": true
+  },
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable the psy-core OpenClaw adapter."
+      },
+      "actorId": {
+        "type": "string",
+        "description": "Required audit actor id unless allowAnonymous is true."
+      },
+      "actor_id": {
+        "type": "string"
+      },
+      "tenantId": {
+        "type": "string",
+        "description": "Optional tenant id attached to every audit event."
+      },
+      "tenant_id": {
+        "type": "string"
+      },
+      "purpose": {
+        "type": "string",
+        "description": "Optional purpose string attached to every audit event."
+      },
+      "dbPath": {
+        "type": "string",
+        "default": "~/.psy/audit.db",
+        "description": "Path to the psy audit SQLite database."
+      },
+      "db_path": {
+        "type": "string"
+      },
+      "sealKeyPath": {
+        "type": "string",
+        "default": "~/.psy/seal-key",
+        "description": "Path to the HMAC seal key."
+      },
+      "seal_key_path": {
+        "type": "string"
+      },
+      "psyCoreVersion": {
+        "type": "string",
+        "default": "0.4.0",
+        "description": "Pinned psy-core version used only for the npx fallback."
+      },
+      "psy_core_version": {
+        "type": "string"
+      },
+      "psyBinary": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "default": null,
+        "description": "Absolute path to a preinstalled psy binary. Recommended for VPS deployments."
+      },
+      "psy_binary": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "payloadCapture": {
+        "type": "boolean",
+        "default": false,
+        "description": "Capture redacted payload previews. Off by default to avoid storing memory text."
+      },
+      "payload_capture": {
+        "type": "boolean"
+      },
+      "dryRun": {
+        "type": "boolean",
+        "default": false,
+        "description": "Log envelopes instead of sending them to psy ingest."
+      },
+      "dry_run": {
+        "type": "boolean"
+      },
+      "allowAnonymous": {
+        "type": "boolean",
+        "default": false,
+        "description": "Allow startup without actorId. Not recommended for production."
+      },
+      "allow_anonymous": {
+        "type": "boolean"
+      },
+      "hookTimeoutMs": {
+        "type": "number",
+        "minimum": 1,
+        "default": 5000,
+        "description": "OpenClaw hook timeout in milliseconds."
+      },
+      "hook_timeout_ms": {
+        "type": "number"
+      }
+    }
+  }
+}

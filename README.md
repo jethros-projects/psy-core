@@ -59,8 +59,9 @@ psy verify --all                  # check chain integrity
 | **LangChain** chat history | `psy-core/langchain` | view, insert, delete |
 | **LangGraph** checkpoints | `psy-core/langgraph` | view, create, insert, delete |
 | **Hermes Agent** memory + skills | `pip install psy-core-hermes` | create, str_replace, delete (MEMORY.md, USER.md, skills) |
+| **OpenClaw** memory + skills | local plugin: `plugins/psy-core-openclaw` | view, create, str_replace, delete (MEMORY.md, USER.md, memory/**, DREAMS.md, skills, skill_workshop, memory-lancedb, memory-wiki) |
 
-Per-framework setup examples are [further down](#per-framework-setup). Hermes Agent runs in a separate Python process; see [`python/psy-core-hermes/README.md`](python/psy-core-hermes/README.md) and [`examples/hermes-agent/`](examples/hermes-agent/).
+Per-framework setup examples are [further down](#per-framework-setup). Hermes Agent runs in a separate Python process; see [`python/psy-core-hermes/README.md`](python/psy-core-hermes/README.md) and [`examples/hermes-agent/`](examples/hermes-agent/). The local OpenClaw plugin is documented in [`plugins/psy-core-openclaw/README.md`](plugins/psy-core-openclaw/README.md).
 
 ## What you get
 
