@@ -15,7 +15,7 @@ Use this skill after the `psy-core` plugin has been installed or enabled.
    openclaw plugins inspect psy-core --json
    openclaw config get plugins.entries.psy-core --json
    ```
-2. Ensure `psy` is available to the same service user that runs OpenClaw:
+2. Install the `psy` CLI only if verification/tailing is needed:
    ```bash
    command -v psy || npm install -g psy-core@0.4.0
    ```
@@ -23,7 +23,6 @@ Use this skill after the `psy-core` plugin has been installed or enabled.
    ```bash
    openclaw config set plugins.entries.psy-core.enabled true
    openclaw config set plugins.entries.psy-core.config.actorId "REPLACE_WITH_OPERATOR_ID"
-   openclaw config set plugins.entries.psy-core.config.psyBinary "$(command -v psy)"
    openclaw config set plugins.entries.psy-core.config.payloadCapture false
    ```
 4. Validate and restart:
@@ -33,14 +32,18 @@ Use this skill after the `psy-core` plugin has been installed or enabled.
    ```
 5. Verify the audit chain:
    ```bash
-   psy verify --all
+   PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db" \
+   PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" \
+   PSY_HEAD_PATH="$HOME/.psy/head.json" \
+     psy verify --all
    ```
 
 ## Guardrails
 
 - Keep `payloadCapture` off unless the user explicitly asks to store redacted
   payload previews.
-- Use an absolute `psyBinary` on VPS/systemd/pm2 deployments.
+- The plugin writes audit rows in-process and does not need `psyBinary`, `npx`,
+  or shell execution at runtime.
 - Do not create or edit memory and skill files just to smoke-test the plugin
   without the user's approval.
 - If the local plugin source is needed, read `AGENT_INSTALL.md` from the plugin

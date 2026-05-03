@@ -23,7 +23,9 @@ test("package ships agent-facing install docs and bundled skill", () => {
   assert.ok(pkg.files.includes("AGENT_INSTALL.md"));
   assert.ok(pkg.files.includes("skills"));
   assert.equal(pkg.openclaw.install.localPath, "plugins/psy-core-openclaw");
-  assert.equal(pkg.openclaw.install.minHostVersion, ">=2026.4.30");
+  assert.equal(pkg.openclaw.install.minHostVersion, ">=2026.4.29");
+  assert.equal(pkg.openclaw.compat.pluginApi, ">=2026.4.29");
+  assert.equal(pkg.peerDependencies.openclaw, ">=2026.4.29");
 
   const skill = readText("skills/psy-core-openclaw/SKILL.md");
   assert.match(skill, /^---\nname: psy-core-openclaw\n/m);
@@ -31,6 +33,13 @@ test("package ships agent-facing install docs and bundled skill", () => {
 
   const guide = readText("AGENT_INSTALL.md");
   assert.match(guide, /openclaw plugins install <absolute path to plugins\/psy-core-openclaw>/);
-  assert.match(guide, /openclaw config set plugins\.entries\.psy-core\.config\.psyBinary "\$\(command -v psy\)"/);
-  assert.match(guide, /psy verify --all/);
+  assert.doesNotMatch(guide, /unless .*dangerously-force-unsafe-install/);
+  assert.doesNotMatch(guide, /psyBinary "\$\(command -v psy\)"/);
+  assert.match(guide, /PSY_AUDIT_DB_PATH="\$HOME\/\.psy\/audit\.db"/);
+});
+
+test("runtime source avoids OpenClaw dangerous-code scan patterns", () => {
+  const source = readText("src/ingest-client.js");
+  assert.doesNotMatch(source, /node:child_process|child_process/);
+  assert.doesNotMatch(source, /\b(?:spawn|spawnSync|execFile|execFileSync)\s*\(/);
 });

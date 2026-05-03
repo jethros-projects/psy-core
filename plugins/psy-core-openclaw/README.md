@@ -4,7 +4,8 @@ Tamper-evident audit adapter for OpenClaw memory and skill access.
 
 This local plugin registers as a native OpenClaw plugin, observes relevant tool
 calls through OpenClaw's `before_tool_call` and `after_tool_call` hooks, and
-forwards paired intent/result envelopes to a long-lived `psy ingest` subprocess.
+writes paired intent/result envelopes directly to a psy-core compatible SQLite
+audit chain.
 
 ## Local install
 
@@ -15,9 +16,10 @@ openclaw config set plugins.entries.psy-core.config.actorId "alice@example.com"
 openclaw gateway restart
 ```
 
-On a VPS, install the plugin and `psy` as the same service user that runs
-OpenClaw, keep the plugin under a stable path, and prefer an absolute
-`psyBinary` so systemd or pm2 PATH differences do not matter:
+On a VPS, install the plugin as the same service user that runs OpenClaw and
+keep the plugin under a stable path. The plugin does not execute shell commands
+or require a `psy` binary at runtime; install `psy-core` only when you want the
+`psy verify`, `psy tail`, or `psy query` CLI commands:
 
 ```bash
 sudo -iu openclaw
@@ -27,13 +29,15 @@ npm install -g psy-core@0.4.0
 openclaw plugins install ~/.local/openclaw-plugins/psy-core-openclaw
 openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "alice@example.com"
-openclaw config set plugins.entries.psy-core.config.psyBinary "$(command -v psy)"
 openclaw gateway restart
-psy verify --all
+PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db" \
+PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" \
+PSY_HEAD_PATH="$HOME/.psy/head.json" \
+  psy verify --all
 ```
 
-If `psyBinary` is not set and `psy` is not on `PATH`, the plugin falls back to
-`npx -y psy-core@0.4.0 psy ingest --no-startup`.
+The old `psyBinary` and `psyCoreVersion` config keys are still accepted for
+compatibility with early development configs, but they are ignored.
 
 ## Agentic install
 
@@ -52,11 +56,13 @@ Copy this prompt into OpenClaw when you want the agent to do the setup:
 Install the psy-core OpenClaw plugin from the psy-core repository. Use
 plugins/psy-core-openclaw/AGENT_INSTALL.md as the procedure. Run all commands as
 the same service user that runs OpenClaw. Keep the plugin under a durable local
-path, install psy-core@0.4.0, set plugins.entries.psy-core.enabled=true, set
-plugins.entries.psy-core.config.actorId to my operator identity, set
-plugins.entries.psy-core.config.psyBinary to an absolute psy path, restart the
-OpenClaw gateway, and verify with openclaw plugins inspect psy-core --json and
-psy verify --all. Do not enable payloadCapture unless I explicitly ask.
+path, enable plugins.entries.psy-core, set plugins.entries.psy-core.config.actorId
+to my operator identity, restart the OpenClaw gateway, and verify with
+openclaw plugins inspect psy-core --json. Install psy-core@0.4.0 only if you
+need the psy CLI, then verify the chain with PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db"
+PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" PSY_HEAD_PATH="$HOME/.psy/head.json"
+psy verify --all.
+Do not enable payloadCapture unless I explicitly ask.
 ```
 
 The plugin also ships a `psy-core-openclaw` skill. It becomes available after
@@ -93,6 +99,7 @@ verification and troubleshooting.
           purpose: "openclaw-audit",
           dbPath: "~/.psy/audit.db",
           sealKeyPath: "~/.psy/seal-key",
+          // Deprecated compatibility fields; ignored by current plugin builds.
           psyCoreVersion: "0.4.0",
           psyBinary: null,
           payloadCapture: false,
@@ -107,8 +114,7 @@ verification and troubleshooting.
 
 `actorId` is required unless `allowAnonymous` is explicitly set to `true`.
 Payload capture is off by default; when enabled, payload previews are redacted
-by `psy ingest` before storage, but memory text still crosses the local stdio
-pipe to the ingest subprocess.
+in-process before storage.
 
 ## Development notes
 

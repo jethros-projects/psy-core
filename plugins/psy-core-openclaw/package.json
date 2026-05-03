@@ -36,15 +36,15 @@
       "npmSpec": "psy-core-openclaw@0.1.0",
       "localPath": "plugins/psy-core-openclaw",
       "defaultChoice": "local",
-      "minHostVersion": ">=2026.4.30"
+      "minHostVersion": ">=2026.4.29"
     },
     "compat": {
-      "pluginApi": ">=2026.4.30",
-      "minGatewayVersion": "2026.4.30"
+      "pluginApi": ">=2026.4.29",
+      "minGatewayVersion": "2026.4.29"
     },
     "build": {
-      "openclawVersion": "2026.4.30",
-      "pluginSdkVersion": "2026.4.30"
+      "openclawVersion": "2026.4.29",
+      "pluginSdkVersion": "2026.4.29"
     },
     "release": {
       "publishToClawHub": false,
@@ -52,7 +52,7 @@
     }
   },
   "peerDependencies": {
-    "openclaw": ">=2026.4.30"
+    "openclaw": ">=2026.4.29"
   },
   "peerDependenciesMeta": {
     "openclaw": {

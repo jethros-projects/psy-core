@@ -30,22 +30,22 @@ if [ -n "${PSY_CORE_REF:-}" ]; then
   git -C "$repo" checkout "$PSY_CORE_REF"
 fi
 
-npm install -g psy-core@0.4.0
 openclaw plugins install "$repo/plugins/psy-core-openclaw"
 ```
 
 If the user gave a branch or tag, set `PSY_CORE_REF` before running the block.
+Install `psy-core@0.4.0` separately only when the user wants the `psy` CLI for
+verification, tailing, or querying the audit chain.
 
 ## Configure
 
 `actorId` is required unless the user explicitly accepts anonymous audit events.
-Use an absolute `psyBinary` path so service managers do not depend on shell
-startup files.
+The plugin writes to the audit store in-process; it does not need a shell,
+`npx`, or a configured `psyBinary`.
 
 ```bash
 openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "REPLACE_WITH_OPERATOR_ID"
-openclaw config set plugins.entries.psy-core.config.psyBinary "$(command -v psy)"
 openclaw config set plugins.entries.psy-core.config.payloadCapture false
 openclaw config validate
 openclaw gateway restart
@@ -65,7 +65,10 @@ Run these checks before declaring the install complete.
 ```bash
 openclaw plugins inspect psy-core --json
 openclaw plugins list --enabled
-psy verify --all
+PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db" \
+PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" \
+PSY_HEAD_PATH="$HOME/.psy/head.json" \
+  psy verify --all
 ```
 
 Confirm the inspect output shows `psy-core` as enabled and loaded. Confirm
@@ -79,8 +82,8 @@ ask before creating a test memory or skill write.
 - Do not enable `payloadCapture` unless the user explicitly requests memory
   payload previews.
 - Do not edit existing memory or skill files for a smoke test without approval.
-- Do not use `--dangerously-force-unsafe-install` unless the user reviewed the
-  scan failure and explicitly asks for the override.
+- Do not use `--dangerously-force-unsafe-install`; current plugin builds avoid
+  OpenClaw's dangerous-code patterns.
 - Keep the local plugin path stable. Reinstall with `--force` only when the user
   wants to replace the same plugin id from a newer local path or archive.
 
@@ -88,15 +91,14 @@ ask before creating a test memory or skill write.
 
 - `openclaw plugins install` fails because config is invalid: run
   `openclaw doctor --fix`, then retry.
-- `psy` is not found after restart: install `psy-core@0.4.0` as the service user
-  and reset `plugins.entries.psy-core.config.psyBinary` to `command -v psy`.
+- `psy` is not found during verification: install `psy-core@0.4.0` as the
+  service user. The plugin itself does not need the CLI.
 - Plugin appears installed but no hooks run: check
   `openclaw plugins inspect psy-core --json`, confirm it is enabled, and restart
   the gateway.
-- npm global installs are not allowed on the host: set `psyBinary` to another
-  executable wrapper that runs `psy ingest --no-startup`, or leave it unset and
-  rely on the plugin's pinned `npx -y psy-core@0.4.0 psy ingest --no-startup`
-  fallback.
+- npm global installs are not allowed on the host: skip the CLI and inspect the
+  SQLite store directly, or run `psy verify` from a controlled admin shell with
+  `PSY_AUDIT_DB_PATH`, `PSY_SEAL_KEY_PATH`, and `PSY_HEAD_PATH` set as above.
 
 ## OpenClaw References
 

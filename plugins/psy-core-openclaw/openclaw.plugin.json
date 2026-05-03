@@ -52,7 +52,7 @@
       "psyCoreVersion": {
         "type": "string",
         "default": "0.4.0",
-        "description": "Pinned psy-core version used only for the npx fallback."
+        "description": "Deprecated compatibility field. The plugin writes audit records in-process and does not use npx."
       },
       "psy_core_version": {
         "type": "string"
@@ -63,7 +63,7 @@
           "null"
         ],
         "default": null,
-        "description": "Absolute path to a preinstalled psy binary. Recommended for VPS deployments."
+        "description": "Deprecated compatibility field. The plugin no longer shells out to a psy binary."
       },
       "psy_binary": {
         "type": [
@@ -82,7 +82,7 @@
       "dryRun": {
         "type": "boolean",
         "default": false,
-        "description": "Log envelopes instead of sending them to psy ingest."
+        "description": "Log envelopes instead of writing them to the psy audit store."
       },
       "dry_run": {
         "type": "boolean"
