@@ -57,6 +57,7 @@ psy verify --all
 | Mem0 | `npm install mem0ai` | `psy-core/mem0` | view, create, str_replace, delete |
 | LangChain chat history | `npm install @langchain/core` | `psy-core/langchain` | view, insert, delete |
 | LangGraph checkpointers | `npm install @langchain/langgraph-checkpoint` | `psy-core/langgraph` | view, create, insert, delete |
+| GBrain operations and BrainEngine | `bun link` / installed GBrain | `psy-core/gbrain` | view, create, str_replace, insert, delete, rename |
 | Hermes Agent memory and skills | `pip install psy-core-hermes` | Python plugin | create, str_replace, delete |
 
 The Node adapters write directly to the audit store. The Hermes adapter runs in Python and streams canonical JSONL into `psy ingest`, so it lands in the same chain and verifies with the same CLI.
@@ -213,6 +214,44 @@ npm install @langchain/langgraph-checkpoint
 
 Wrap a `BaseCheckpointSaver` implementation such as memory, SQLite, or Postgres. psy records checkpoint reads, writes, partial writes, and thread deletion.
 
+### GBrain
+
+GBrain is TypeScript/Bun, so the adapter is a structural wrapper rather than a Python observer. Use `wrapOperations` around GBrain's exported `operations` array for MCP/CLI-facing calls, or `wrapEngine` around a `BrainEngine` instance for direct page/chunk/link/timeline writes.
+
+```ts
+import { operations } from 'gbrain/operations';
+import { wrapEngine, wrapOperations } from 'psy-core/gbrain';
+
+const auditedOps = wrapOperations(operations, { actorId: 'agent-1' });
+const auditedEngine = wrapEngine(engine, { actorId: 'agent-1', brainId: 'host' });
+```
+
+`wrapEngine` also wraps transaction callback engines, so writes inside `engine.transaction(async tx => ...)` are still recorded. Search/query paths are hashed in `memory_path` to avoid leaking raw queries; set `auditReads: false` for high-volume read deployments.
+
+| GBrain surface | psy operation | Notes |
+|---|---|---|
+| Page reads, lists, search, query, chunks, graph reads | `view` | Query text is hashed in `memory_path`. |
+| Page writes, raw data writes, version reverts, link rewrites | `str_replace` | One audit pair per GBrain call boundary. |
+| Tags, links, timeline entries, chunk deletes, version creates | `insert` / `delete` | Bulk calls are recorded once at the boundary, not once per row. |
+| `updateSlug` | `rename` | Records both old and new page paths. |
+
+| Surface | Captured? | Why |
+|---|---:|---|
+| Calls made through `wrapOperations` or `wrapEngine` | Yes | The host has applied the adapter. |
+| Writes inside `engine.transaction(async tx => ...)` | Yes | The transaction callback engine is wrapped. |
+| Raw SQL, config, migrations, jobs, eval/code capture, health/stats | No | These are infrastructure/admin surfaces; use `classifyOperation` or `classifyEngineMethod` to opt in explicitly. |
+| A stock `gbrain serve` or `gbrain` CLI process | No | GBrain does not load psy automatically; the host must import and apply `psy-core/gbrain`. |
+| Internal side effects inside one GBrain operation | One row | psy records the operation boundary, not every private engine call unless the host wraps the engine too. |
+| Hermes/OpenClaw/MemoryProvider plugin activity | No | Use the dedicated plugin or adapter for that surface. |
+
+For live adapter validation against a local GBrain checkout:
+
+```bash
+PSY_GBRAIN_REAL_REPO=/path/to/gbrain npm run test:gbrain:live
+```
+
+This runs the real PGLite `BrainEngine` through psy's SQLite-backed audit store, then uses Bun to invoke GBrain's real `operations.ts` boundary with an in-memory capture store. The split exists because GBrain's operation module uses Bun/WASM imports, while psy's SQLite store depends on Node `better-sqlite3`.
+
 ### Hermes Agent
 
 ```bash
@@ -234,6 +273,7 @@ import 'psy-core/mastra';
 import 'psy-core/mem0';
 import 'psy-core/langchain';
 import 'psy-core/langgraph';
+import 'psy-core/gbrain';
 
 for (const provider of listProviders()) {
   console.log(provider.name, provider.capabilities, provider.memoryPathScheme);
@@ -287,6 +327,7 @@ Useful environment variables:
 | Goal | Start here |
 |---|---|
 | Audit a TypeScript/Node agent | [Quick Install](#quick-install) and [Adapter Notes](#adapter-notes) |
+| Audit GBrain | [GBrain](#gbrain) |
 | Audit Hermes Agent | [`python/psy-core-hermes`](python/psy-core-hermes/README.md) |
 | Try the Hermes integration end to end | [`examples/hermes-agent`](examples/hermes-agent/README.md) |
 | Understand integrity checks | [How the Chain Works](#how-the-chain-works) and [Guarantees and Limits](#guarantees-and-limits) |
@@ -309,6 +350,12 @@ npm install
 npm test
 npm run typecheck
 npm run build
+```
+
+GBrain live validation expects a local GBrain checkout and Bun:
+
+```bash
+PSY_GBRAIN_REAL_REPO=/path/to/gbrain npm run test:gbrain:live
 ```
 
 Python adapter tests live under [`python/psy-core-hermes`](python/psy-core-hermes/README.md).

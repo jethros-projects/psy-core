@@ -1,7 +1,7 @@
 {
   "name": "psy-core",
   "version": "0.4.0",
-  "description": "Tamper-evident audit log for AI agent memory operations. Adapters for Anthropic Memory, Letta, Mastra, Mem0, LangChain, LangGraph, and Hermes Agent (via psy-core-hermes).",
+  "description": "Tamper-evident audit log for AI agent memory operations. Adapters for Anthropic Memory, Letta, Mastra, Mem0, LangChain, LangGraph, GBrain, and Hermes Agent (via psy-core-hermes).",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/jethros-projects/psy-core#readme",
@@ -26,6 +26,7 @@
     "mem0",
     "langchain",
     "langgraph",
+    "gbrain",
     "hermes",
     "hermes-agent",
     "observability",
@@ -65,6 +66,10 @@
       "types": "./dist/langgraph/index.d.ts",
       "import": "./dist/langgraph/index.js"
     },
+    "./gbrain": {
+      "types": "./dist/gbrain/index.d.ts",
+      "import": "./dist/gbrain/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -82,6 +87,9 @@
     "test": "npm run test:node && npm run test:vitest",
     "test:node": "node --import tsx --test tests/canonical.test.ts tests/hash-chain.test.ts tests/rotation.test.ts tests/store.test.ts tests/verify.test.ts",
     "test:vitest": "vitest run",
+    "test:gbrain": "vitest run tests/gbrain-wrap.test.ts tests/gbrain-real.test.ts",
+    "test:gbrain:live": "bash scripts/gbrain-live.sh",
+    "test:gbrain:live:ops": "bun run scripts/gbrain-live-operations.ts",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "verify": "npm run typecheck && npm test && npm run build",
@@ -117,6 +125,7 @@
     "@letta-ai/letta-client": ">=1.10 <2",
     "@mastra/core": ">=1.28 <2",
     "@mastra/memory": ">=1.17 <2",
+    "gbrain": ">=0.26 <1",
     "mem0ai": ">=3 <4"
   },
   "peerDependenciesMeta": {
@@ -136,6 +145,9 @@
       "optional": true
     },
     "@mastra/memory": {
+      "optional": true
+    },
+    "gbrain": {
       "optional": true
     },
     "mem0ai": {
