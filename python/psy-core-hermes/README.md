@@ -1,71 +1,206 @@
 # psy-core-hermes
 
-> Tamper-evident memory audit log for your Hermes agent.
-> Every memory write — to MEMORY.md, USER.md, or skills — hash-chained and HMAC-sealed.
-> One `pip install`.
+> Audit receipts for Hermes Agent memory and skills.
+> Keep the learning loop alive, but make every durable write inspectable.
 
 [![PyPI](https://img.shields.io/pypi/v/psy-core-hermes.svg)](https://pypi.org/project/psy-core-hermes/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/psy-core-hermes?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/psy-core-hermes)
 [![Python](https://img.shields.io/pypi/pyversions/psy-core-hermes.svg)](https://pypi.org/project/psy-core-hermes/)
 [![License](https://img.shields.io/pypi/l/psy-core-hermes.svg)](https://github.com/jethros-projects/psy-core/blob/main/LICENSE)
 
-`psy-core-hermes` is the Hermes Agent companion to [`psy-core`](https://www.npmjs.com/package/psy-core). It registers as a plain Hermes plugin, observes every memory mutation, and forwards each one to a long-lived `psy ingest` subprocess that writes the canonical hash-chained, HMAC-sealed audit log to `~/.psy/audit.db`.
+[PyPI](https://pypi.org/project/psy-core-hermes/) | [psy-core](../../README.md) | [Hermes example](../../examples/hermes-agent/README.md) | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | [Issues](https://github.com/jethros-projects/psy-core/issues)
 
-## Install
+**psy-core-hermes is the Hermes Agent adapter for [psy-core](https://github.com/jethros-projects/psy-core).** Hermes is built to learn: it saves memories, updates user profiles, creates skills, and patches those skills as it gets better at recurring work. psy-core-hermes records those durable changes into a tamper-evident audit chain.
+
+It does not replace Hermes memory. It does not become your MemoryProvider. It is a plugin observer that listens at the tool boundary, watches the file-backed memory directory, and streams canonical audit envelopes into `psy ingest`.
+
+The result is simple: Hermes keeps improving, and you get a verifiable trail of what changed.
+
+## Quick Install
 
 ```bash
 pip install psy-core-hermes
 psy-core-hermes init --actor-id you@example.com
 ```
 
-This adds a `plugins.psy` block to `~/.hermes/config.yaml`. Then run Hermes as usual; the plugin loads via Hermes's `hermes_agent.plugins` entry-point group.
+Then run Hermes normally:
 
-If `psy` is not on your PATH, the plugin falls back to `npx -y psy-core@<exact-version> psy ingest`. Most modern dev machines already have Node.js, so this Just Works; if you want to skip the npx round-trip, install psy-core globally with `npm i -g psy-core`.
-
-### Versioning note
-
-`psy-core-hermes` has its own PyPI version. The initial adapter release line is `0.1.x`. The `psy_core_version` config below is the npm `psy-core` version used for the Node `psy ingest` fallback, not the Python package version.
-
-## What gets captured
-
-Every memory mutation Hermes exposes, mapped to psy-core's canonical operation vocabulary.
-
-| psy operation | Hermes source                                       | Captured via                                         |
-|---------------|-----------------------------------------------------|------------------------------------------------------|
-| `create`      | `memory` tool with `action: "add"`                  | `pre_tool_call` (intent) + filesystem watcher (result) |
-| `str_replace` | `memory` tool with `action: "replace"`              | `pre_tool_call` + filesystem watcher                 |
-| `delete`      | `memory` tool with `action: "remove"`               | `pre_tool_call` + filesystem watcher                 |
-| `create`      | `skill_manage` with `action: "create"` / `"write_file"` | `pre_tool_call` + `post_tool_call`                |
-| `str_replace` | `skill_manage` with `action: "edit"` / `"patch"`    | `pre_tool_call` + `post_tool_call`                   |
-| `delete`      | `skill_manage` with `action: "delete"` / `"remove_file"` | `pre_tool_call` + `post_tool_call`              |
-
-Every mutation produces a paired intent + result row, the same shape as every other psy-core adapter.
-
-## Hermes memory surface — what's captured and what's not
-
-Hermes has more than one kind of memory. The initial adapter scope deliberately covers the file-backed `memory` tool plus `skill_manage`, and explicitly stays out of the way of everything else. The boundary is pinned by tests at `tests/test_real_hermes.py`.
-
-| # | Surface | Hookable? | Captured? |
-|---|---|:---:|:---:|
-| 1 | `memory` tool — `add/replace/remove × {memory,user}` writing MEMORY.md / USER.md | ✅ via `pre_tool_call` + filesystem watcher | **Captured** |
-| 2 | `skill_manage` tool — SKILL.md + sub-files | ✅ via `pre_tool_call` + `post_tool_call` | **Captured** |
-| 3 | **MemoryProvider plugins** — Honcho, Mem0, Hindsight, Byterover, Holographic, OpenViking, RetainDB, Supermemory; each exposes its own write tools (`honcho_conclude`, `mem0_conclude`, `hindsight_retain`, `fact_store`, `viking_remember`, `retaindb_remember`/`ingest_file`, `supermemory_store`, `brv_curate`, …) | ✅ via `pre_tool_call` in Hermes's tool dispatcher, before `memory_manager.handle_tool_call` | **Not captured** in the initial scope. MemoryProvider write-tool capture is the largest likely future expansion; turn-on is one allowlist edit. |
-| 4 | MemoryProvider lifecycle hooks (`sync_turn`, `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `on_delegation`) | Subclass-only — `MemoryManager.add_provider` is single-select, so subclassing locks the user out of running Honcho/Mem0/Hindsight alongside psy | Out of scope (architectural — would require psy-core-hermes to BE the user's MemoryProvider, which the plan explicitly rejected) |
-| 5 | `session_search` (read-only SessionDB query) | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`, no post) | Not captured (read-only) |
-| 6 | `todo` tool | ✅ via `pre_tool_call` (in `_AGENT_LOOP_TOOLS`) | Not captured (not memory) |
-| 7 | SessionDB writes (cross-session summaries) | ❌ no upstream hook | Out of scope (would need an upstream PR) |
-| 8 | Trajectory JSONL writes | ❌ no upstream hook | Out of scope (would need an upstream PR) |
-| 9 | `flush_memories()` auxiliary writes | ❌ no upstream hook | Out of scope (would need an upstream PR) |
-| 10 | Gateway transport events | Separate `gateway/hooks.py` registry | Separate adapter scope |
-
-Note on #3 ↔ #1: when the file-backed `memory` tool runs, Hermes also calls `memory_manager.on_memory_write(...)` so any active external MemoryProvider can mirror the write semantically. That makes psy-core-hermes (audit) and Honcho/Mem0 (semantic recall) **complementary observers of the same write**, not competing writers — they're additive.
-
-If you need Mem0/Letta/LangChain memory audited at the API level (rather than via Hermes's tool dispatch), psy-core ships dedicated adapters for those frameworks; see the [adapter table in the root README](../../README.md#supported-memory-frameworks).
-
-## Identity
-
-`actor_id` is **required** unless `allow_anonymous: true`. Audit events must attribute the session to a principal. When `actor_id` is missing the plugin emits the F4 error template at session start and refuses to register hooks:
-
+```bash
+hermes
 ```
+
+In another terminal:
+
+```bash
+psy tail
+```
+
+When Hermes writes `MEMORY.md`, `USER.md`, or a skill file, you should see paired `intent` and `result` rows. Verify the chain at any time:
+
+```bash
+psy verify --all
+```
+
+## Why This Exists
+
+Hermes memory is valuable because it persists. That persistence is also why it deserves an audit trail.
+
+Use psy-core-hermes when you want to answer questions like:
+
+- What did Hermes just remember about this user?
+- Which session created or edited this skill?
+- Did a memory write fail, or did Hermes never attempt it?
+- Did a skill churn through several rapid patches after creation?
+- Has the audit log been edited, reordered, or truncated since it was written?
+
+The adapter gives operators receipts without forcing Hermes into a new memory backend.
+
+## How It Works
+
+```text
+Hermes Agent process                        psy-core audit process
+--------------------                        ----------------------
+pre_tool_call hook
+  memory / skill intent  ----------------->  psy ingest writes intent row
+
+Hermes executes the tool
+  MEMORY.md / USER.md changes
+  SKILL.md or skill file changes
+
+filesystem watcher / post_tool_call ------>  psy ingest writes result row
+
+                                             SQLite row is canonicalized
+                                             row hash chains to previous row
+                                             HMAC sealed head is advanced
+```
+
+The Python plugin owns observation. The Node `psy` CLI owns the canonical audit chain. That split keeps one verifier for every psy adapter, whether events originate from TypeScript, Python, or another language.
+
+## What Gets Captured
+
+| Hermes action | psy operation | Result confirmation |
+|---|---|---|
+| `memory` add to `MEMORY.md` or `USER.md` | `create` | Filesystem watcher |
+| `memory` replace in `MEMORY.md` or `USER.md` | `str_replace` | Filesystem watcher |
+| `memory` remove from `MEMORY.md` or `USER.md` | `delete` | Filesystem watcher |
+| `skill_manage` create skill or file | `create` | `post_tool_call` |
+| `skill_manage` edit or patch skill/file | `str_replace` | `post_tool_call` |
+| `skill_manage` delete skill/file | `delete` | `post_tool_call` |
+
+Hermes handles the `memory` tool inside its agent loop, so there is no normal post-tool hook for memory writes. psy-core-hermes records the pre-tool intent and lets `watchdog` confirm the resulting file change.
+
+## What Stays Out of Scope
+
+| Surface | Captured? | Why |
+|---|---:|---|
+| `MEMORY.md` and `USER.md` writes through the built-in `memory` tool | Yes | Core file-backed Hermes memory |
+| Skills written through `skill_manage` | Yes | Durable procedural memory |
+| External MemoryProvider tools such as Honcho, Mem0, Hindsight, RetainDB, Supermemory, and Byterover | No | Separate provider-specific memory surfaces |
+| MemoryProvider lifecycle hooks | No | Becoming a provider would block users from running their chosen provider |
+| `session_search` | No | Read-only lookup |
+| `todo` | No | Task state, not memory |
+| SessionDB summaries, trajectory JSONL, `flush_memories()` writes | No | No stable upstream hook today |
+| Gateway transport events | No | Separate adapter surface |
+
+This boundary is intentional. psy-core-hermes should be the audit witness for Hermes's native durable memory paths, not a competing memory system.
+
+If your app also calls Mem0, Letta, LangChain, or LangGraph directly, use the dedicated adapters in the [root psy-core README](../../README.md#what-it-captures).
+
+## Operator Quick Reference
+
+| Goal | Command |
+|---|---|
+| Enable plugin in `~/.hermes/config.yaml` | `psy-core-hermes init --actor-id you@example.com` |
+| Allow anonymous local testing | `psy-core-hermes init --allow-anonymous` |
+| Diagnose config, paths, Node, `npx`, and subprocess handshake | `psy-core-hermes doctor` |
+| Print a compact current status | `psy-core-hermes status` |
+| Inspect JSONL envelopes without spawning `psy ingest` | `psy-core-hermes dry-run < envelopes.jsonl` |
+| See live audit rows | `psy tail` |
+| Query by actor | `psy query --actor you@example.com` |
+| Verify chain integrity | `psy verify --all` |
+| Rank unstable skills by churn | `psy-core-hermes skill-stats` |
+
+## Install Details
+
+`psy-core-hermes` is a Python package with a Hermes plugin entry point:
+
+```toml
+[project.entry-points."hermes_agent.plugins"]
+psy = "psy_core.hermes.register"
+```
+
+After `psy-core-hermes init`, your Hermes config contains:
+
+```yaml
+plugins:
+  enabled:
+    - psy
+
+  psy:
+    enabled: true
+    actor_id: you@example.com
+    psy_core_version: 0.4.0
+```
+
+At runtime, the plugin starts the audit writer using this order:
+
+1. Use `psy_binary` if configured.
+2. Else use `psy` if it is on `PATH`.
+3. Else use `npx -y psy-core@0.4.0 psy ingest`.
+4. Else fail with an install diagnostic.
+
+Most users only need `pip install psy-core-hermes`. Installing `psy-core` globally avoids the `npx` fallback:
+
+```bash
+npm i -g psy-core
+```
+
+## Configuration
+
+Full `plugins.psy` reference:
+
+```yaml
+plugins:
+  enabled:
+    - psy
+
+  psy:
+    enabled: true
+
+    # Identity
+    actor_id: alice@acme.com          # required unless allow_anonymous: true
+    tenant_id: acme                   # optional
+    purpose: production-debug         # optional
+    allow_anonymous: false
+
+    # Storage; defaults shown for HERMES_HOME unset.
+    db_path: ~/.hermes/psy/audit.db
+    seal_key_path: ~/.hermes/psy/seal-key
+    memories_dir: ~/.hermes/memories
+
+    # Ingest subprocess
+    psy_core_version: 0.4.0
+    psy_binary: null
+    schema_version_pin: "1.0.0"
+
+    # Payload handling
+    payload_capture: true
+    redactor: default                 # default | none | "<dotted_path>"
+
+    # Debugging
+    dry_run: false
+    log_level: info
+```
+
+`HERMES_HOME` changes the default base directory. Without it, paths resolve under `~/.hermes`.
+
+## Identity Model
+
+`actor_id` is required by default. This is deliberate: an audit log without a principal is only half a receipt.
+
+If `actor_id` is missing, Hermes starts without the plugin hooks and prints:
+
+```text
 psy-core-hermes: actor_id is required.
   Why:    audit events must attribute the session to a principal.
   Where:  ~/.hermes/config.yaml -> plugins.psy.actor_id
@@ -74,76 +209,47 @@ psy-core-hermes: actor_id is required.
       psy:
         actor_id: alice@acme.com
   Bypass: set allow_anonymous: true (not recommended in production).
-  Docs:   https://github.com/jethros-projects/psy-core/blob/main/python/psy-core-hermes/README.md#identity
+  Docs:   https://github.com/jethros-projects/psy-core/blob/main/python/psy-core-hermes/README.md#identity-model
 ```
 
-## Configuration
-
-```yaml
-# ~/.hermes/config.yaml
-plugins:
-  enabled:
-    - psy
-
-  psy:
-    enabled: true
-    actor_id: alice@acme.com         # REQUIRED unless allow_anonymous: true
-    tenant_id: acme                  # optional
-    purpose: production-debug        # optional
-
-    db_path: ~/.psy/audit.db         # optional; default <HERMES_HOME>/psy/audit.db
-    seal_key_path: ~/.psy/seal-key   # optional
-    memories_dir: ~/.hermes/memories # filesystem-watched dir
-
-    psy_core_version: 0.4.0          # npm psy-core pin (used for npx fallback)
-    psy_binary: null                 # optional override
-
-    redactor: default                # default | none | "<dotted_path>"
-    payload_capture: true            # capture memory content (with redaction)
-    dry_run: false
-    log_level: info
-    allow_anonymous: false
-    schema_version_pin: "1.0.0"
-```
-
-## Console scripts
+For local experiments, use:
 
 ```bash
-psy-core-hermes init [--actor-id NAME]   # idempotent config block insertion
-psy-core-hermes doctor                   # config + paths + subprocess handshake test
-psy-core-hermes status                   # one-line summary
-psy-core-hermes dry-run < envelopes.jsonl  # emit envelopes locally; never spawn ingest
-psy-core-hermes skill-stats              # skill-quality report from the audit chain
+psy-core-hermes init --allow-anonymous
 ```
 
-## Skill-quality reporting (`skill-stats`)
+For shared machines, hosted agents, or any real user data, set `actor_id`.
 
-The audit chain isn't just a write log — its tamper-evident ordering makes it a uniquely good signal for *outcome attribution* on skills. `psy-core-hermes skill-stats` reads the chain and reports per-skill churn, rapid-patch counts, and false-start patterns:
+## Skill Churn Reports
+
+Hermes skills are procedural memory. A skill that is created once and reused may be healthy; a skill that is patched five times in an hour may be unstable. The audit chain can measure that because every skill write has a timestamp and an immutable order.
 
 ```bash
-$ psy-core-hermes skill-stats
+psy-core-hermes skill-stats
+```
+
+Example:
+
+```text
 SKILL                            CREATE  PATCH  DEL  CHURN  RAPID  STATUS
 deploy-runbook                        1      7    0   7.00      5  unstable
 flaky-test-recovery                   1      4    0   4.00      4  unstable
 release-checklist                     1      0    0   0.00      0  ok
 
-legend:  unstable = churn>=2.0 or 3+ rapid patches  |  short-lived = create+delete within 1 day
+legend: unstable = churn>=2.0 or 3+ rapid patches | short-lived = create+delete within 1 day
 ```
 
-Why this matters: Hermes's curator at `agent/curator.py:283-285` explicitly tells the model *"DO NOT use usage counters as a reason to skip consolidation … 'use=0' is not evidence."* The team knows usage counters are insufficient. The audit chain provides the complementary signal — a skill patched 5 times within an hour of creation is *probably unstable*, no matter how often it's been called. That's a fact the chain can prove via its hash-linked ordering and timestamps.
-
-Useful flags:
+Useful views:
 
 ```bash
-psy-core-hermes skill-stats --json                # machine-readable
-psy-core-hermes skill-stats --since 7d            # last week only
-psy-core-hermes skill-stats --actor alice@acme    # multi-tenant filter
-psy-core-hermes skill-stats --top 10              # most-suspect 10 only
-psy-core-hermes skill-stats --skill-md-only       # ignore attached files
-psy-core-hermes skill-stats --db-path ~/.psy/audit.db  # explicit DB path
+psy-core-hermes skill-stats --since 7d
+psy-core-hermes skill-stats --actor alice@acme.com
+psy-core-hermes skill-stats --top 10
+psy-core-hermes skill-stats --skill-md-only
+psy-core-hermes skill-stats --json
 ```
 
-The metrics are also available as a Python library function for users who want to feed the signal into their own tools (Hermes curator integration, dashboards, Atropos quality filters):
+Library usage:
 
 ```python
 from datetime import timedelta
@@ -151,82 +257,78 @@ from pathlib import Path
 from psy_core.hermes.skill_stats import compute_skill_stats
 
 metrics = compute_skill_stats(
-    Path.home() / ".psy" / "audit.db",
+    Path.home() / ".hermes" / "psy" / "audit.db",
     actor_id="alice@acme.com",
     since=timedelta(days=7),
 )
-unstable = [m for m in metrics if m.status == "unstable"]
+
+for skill in metrics:
+    if skill.status == "unstable":
+        print(skill.skill, skill.churn_ratio)
 ```
 
-The DB handle is opened read-only (SQLite `mode=ro` URI), so the read path provably cannot mutate the chain.
+The stats path opens SQLite read-only.
 
-## Architecture
+## Docs by Goal
 
-```
-┌─────────────────────────────────────────┐         ┌─────────────────────┐
-│ Hermes process (Python)                 │         │ psy ingest (Node)   │
-│                                         │         │                     │
-│  psy_core.hermes.register(ctx)               │         │  Auditor.append()   │
-│   ├─ register_hook(pre_tool_call,       │         │  Sealer.writeHead() │
-│   │   filter: tool_name in              │  JSONL  │  ↓                  │
-│   │   {"memory","skill_manage"})        │  ──────▶│  ~/.psy/audit.db    │
-│   └─ register_hook(post_tool_call,      │  stdio  │  ~/.psy/head.json   │
-│       filter: tool_name=="skill_manage")│  ◀─ACK  │  ~/.psy/seal-key    │
-│                                         │         │                     │
-│  Filesystem watcher (watchdog)          │         └─────────────────────┘
-│   ├─ ~/.hermes/memories/MEMORY.md       │
-│   ├─ ~/.hermes/memories/USER.md         │         Spawn flow:
-│   └─ on change: emit confirmed-result   │           1. shutil.which("psy") → use directly
-│                                         │           2. else npx -y psy-core@X psy ingest
-│  IngestClient (thread-safe queue)       │           3. else error: install psy-core or Node
-│   ├─ enqueue(envelope)                  │
-│   ├─ background writer thread           │
-│   └─ atexit + SIGTERM cleanup           │
-└─────────────────────────────────────────┘
-```
+| Goal | Where to go |
+|---|---|
+| Try the adapter quickly | [`../../examples/hermes-agent`](../../examples/hermes-agent/README.md) |
+| Understand the core audit chain | [Root psy-core README](../../README.md) |
+| See generated Hermes config | [`../../examples/hermes-agent/hermes-config.yaml`](../../examples/hermes-agent/hermes-config.yaml) |
+| Debug install issues | `psy-core-hermes doctor` |
+| Verify audit integrity | `psy verify --all` |
+| Report suspicious skill churn | `psy-core-hermes skill-stats` |
 
-## Distribution
+## Versioning and Compatibility
 
-- **Primary:** PyPI as `psy-core-hermes`. Auto-discovered via `hermes_agent.plugins` entry-point.
-- **Secondary:** `hermes plugins install jethros-projects/psy-core-hermes` (Hermes's own installer; runs `git clone --depth 1` against the in-repo path).
+This package version: `psy-core-hermes 0.1.2`
 
-## Verification
+Pinned Node audit engine: `psy-core 0.4.0`
+
+Audit schema: `1.0.0`
+
+Verified Hermes Agent contracts:
+
+| Contract | Behavior |
+|---|---|
+| Plugin entry point group | `hermes_agent.plugins` |
+| Entry point value | Module path `psy_core.hermes.register` |
+| Hook signature | Keyword-only `tool_name`, `args`, `task_id`, `session_id`, `tool_call_id`, and extras |
+| Memory post-hook behavior | Built-in `memory` bypasses `post_tool_call`; watcher confirms results |
+| Memory args | `{action, target, content, old_text}` |
+| Skill args | `{action, name, content, old_string, new_string, file_path, file_content, ...}` |
+
+Source verification covers Hermes Agent v0.11.0 (`v2026.4.23`) and v0.12.0 (`v2026.4.30`). The cross-language workflow also loads the plugin into a real Hermes `PluginManager`.
+
+## Security Notes
+
+- The adapter records durable memory writes; it does not approve or deny Hermes tool calls.
+- Payload capture is enabled by default for the Hermes adapter so memory content previews are useful. Built-in redaction catches common secret patterns, but it is not a DLP system.
+- The seal key protects tail verification. Keep `seal_key_path` private and mode `0600`.
+- `psy verify --all` should be part of any incident review involving memory changes.
+- Use `allow_anonymous: true` only for local experiments.
+
+## Development
 
 ```bash
-psy verify --all   # full chain integrity check + sealed-tail verify
+cd python/psy-core-hermes
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+ruff check .
+mypy src
 ```
 
-The TS-side `psy verify` reads `~/.psy/audit.db`, walks the hash chain, validates the HMAC seal, and exits non-zero on any tampering.
+Root audit-engine checks:
 
-### Verified against hermes-agent v0.11.0 and v0.12.0
-
-The plugin contract was source-verified against
-[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at
-v0.11.0 (`v2026.4.23`) and v0.12.0 (`v2026.4.30`):
-
-- Entry-point group is `hermes_agent.plugins`; the loader does
-  `ep.load()` and then `getattr(module, "register")`, so our entry-point
-  value is the **module path** `psy_core.hermes.register` (not the `module:attr`
-  form — that returns the function from `ep.load()` and breaks the
-  `getattr(module, "register")` lookup).
-- `_AGENT_LOOP_TOOLS = {"todo", "memory", "session_search", "delegate_task"}`
-  — confirmed `memory` bypasses `post_tool_call`; we use the filesystem
-  watcher to confirm result envelopes for memory writes.
-- `memory` tool args: `{action, target, content, old_text}` where
-  `target ∈ {"memory", "user"}` maps to `MEMORY.md` / `USER.md`.
-- `skill_manage` args: `{action, name, content?, old_string?, new_string?,
-  file_path?, file_content?, ...}`. Skill key is `name`; `file_path` is
-  the optional sub-path under the skill directory.
-- Hook callback signature: keyword-only
-  `(*, tool_name, args, task_id, session_id, tool_call_id, **_)`.
-- `hermes_cli.config.load_config()` returns the parsed YAML as a dict.
-- v0.12.0's Curator adds `.usage.json` counters and autonomous skill
-  maintenance, but the real-Hermes test suite still passes: psy-core-hermes
-  remains an external tamper-evident audit observer, not Hermes's curator.
-
-A live integration test that loads our plugin into a real Hermes
-`PluginManager` and asserts captured envelopes is part of the e2e
-workflow at `.github/workflows/cross-lang-e2e.yml`.
+```bash
+cd ../..
+npm test
+npm run typecheck
+npm run build
+```
 
 ## License
 
