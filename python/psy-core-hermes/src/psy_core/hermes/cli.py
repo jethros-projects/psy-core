@@ -17,9 +17,11 @@ import argparse
 import importlib
 import json
 import logging
+import os
 import shutil
+import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -31,6 +33,12 @@ from psy_core.hermes._version import (
 )
 from psy_core.hermes.config import PsyHermesConfig, load_psy_config
 from psy_core.hermes.ingest_client import IngestClient, resolve_spawn_plan
+from psy_core.hermes.trust_layer import (
+    TRUST_LAYER_FRAMING,
+    TRUST_LAYER_SKILL_NAME,
+    default_trust_layer_skill_path,
+    install_trust_layer_skill,
+)
 
 DEFAULT_CONFIG_PATH = Path.home() / ".hermes" / "config.yaml"
 
@@ -47,6 +55,53 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--allow-anonymous",
         action="store_true",
         help="set allow_anonymous: true (skip actor_id requirement)",
+    )
+
+    install_skill_p = sub.add_parser(
+        "install-skill",
+        help="install the Hermes psy-core trust-layer skill",
+    )
+    install_skill_p.add_argument(
+        "--path",
+        help="where to write SKILL.md (default: ~/.hermes/skills/devops/psy-core-trust-layer/SKILL.md)",
+    )
+
+    trust_p = sub.add_parser(
+        "trust-layer",
+        help="configure psy-core as the Hermes trust layer and install the operating skill",
+    )
+    trust_p.add_argument("--actor-id", help="set plugins.psy.actor_id")
+    trust_p.add_argument("--tenant-id", help="set plugins.psy.tenant_id")
+    trust_p.add_argument("--purpose", help="set plugins.psy.purpose")
+    trust_p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="path to Hermes config.yaml")
+    trust_p.add_argument(
+        "--allow-anonymous",
+        action="store_true",
+        help="set allow_anonymous: true (not recommended outside local experiments)",
+    )
+    trust_p.add_argument(
+        "--payload-capture",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="capture redacted payloads in audit rows (default: true)",
+    )
+    trust_p.add_argument("--redactor", default="default", help="default | none | dotted.path")
+    trust_p.add_argument("--psy-binary", help="explicit path to psy/psy-core binary")
+    trust_p.add_argument(
+        "--install-skill",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="install the Hermes psy-core trust-layer skill (default: true)",
+    )
+    trust_p.add_argument(
+        "--skill-path",
+        help="where to write the trust-layer SKILL.md",
+    )
+    trust_p.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="run psy verify --all after doctor (default: true)",
     )
 
     doctor_p = sub.add_parser("doctor", help="show resolved config + paths + subprocess health")
@@ -91,16 +146,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.cmd == "init":
-        return cmd_init(args)
-    if args.cmd == "doctor":
-        return cmd_doctor(args)
-    if args.cmd == "status":
-        return cmd_status(args)
-    if args.cmd == "dry-run":
-        return cmd_dry_run(args)
-    if args.cmd == "skill-stats":
-        return cmd_skill_stats(args)
+    handlers: dict[str, Callable[[argparse.Namespace], int]] = {
+        "init": cmd_init,
+        "install-skill": cmd_install_skill,
+        "trust-layer": cmd_trust_layer,
+        "doctor": cmd_doctor,
+        "status": cmd_status,
+        "dry-run": cmd_dry_run,
+        "skill-stats": cmd_skill_stats,
+    }
+    if args.cmd in handlers:
+        return handlers[args.cmd](args)
     parser.error(f"unknown command {args.cmd}")
     return 2
 
@@ -139,6 +195,87 @@ def cmd_init(args: argparse.Namespace) -> int:
     config_path = Path(args.config).expanduser()
     raw, _existing = _load_config_section(config_path)
 
+    psy = _ensure_psy_section(raw, config_path)
+    psy.setdefault("enabled", True)
+    if args.actor_id:
+        psy["actor_id"] = args.actor_id
+    if args.allow_anonymous:
+        psy["allow_anonymous"] = True
+    psy.setdefault("psy_core_version", PSY_CORE_VERSION)
+
+    _write_config(config_path, raw)
+    sys.stdout.write(f"psy-core-hermes: wrote plugins.psy block to {config_path}\n")
+    return 0
+
+
+def cmd_install_skill(args: argparse.Namespace) -> int:
+    path = Path(args.path).expanduser() if args.path else default_trust_layer_skill_path()
+    result = install_trust_layer_skill(path)
+    sys.stdout.write(f"psy-core-hermes: installed {TRUST_LAYER_SKILL_NAME} skill at {result.path}\n")
+    if result.backup_path:
+        sys.stdout.write(f"psy-core-hermes: backed up previous skill to {result.backup_path}\n")
+    if not result.changed:
+        sys.stdout.write("psy-core-hermes: skill already up to date\n")
+    return 0
+
+
+def cmd_trust_layer(args: argparse.Namespace) -> int:
+    config_path = Path(args.config).expanduser().resolve()
+    raw, _existing = _load_config_section(config_path)
+    psy = _ensure_psy_section(raw, config_path)
+    _configure_trust_layer_section(psy, config_path, args)
+
+    if not psy.get("actor_id") and not psy.get("allow_anonymous"):
+        raise SystemExit(
+            "psy-core-hermes trust-layer: --actor-id is required unless "
+            "--allow-anonymous is set or plugins.psy.actor_id already exists"
+        )
+
+    _write_config(config_path, raw)
+    _, config, err = _resolve_or_empty(argparse.Namespace(config=str(config_path)))
+    if err or config is None:
+        sys.stdout.write(f"psy-core-hermes trust-layer: config invalid after write: {err}\n")
+        return 2
+    _prepare_trust_layer_paths(config)
+
+    sys.stdout.write("psy-core trust layer for Hermes\n\n")
+    sys.stdout.write(f"ok Hermes config updated: {config_path}\n")
+    sys.stdout.write("   plugins.enabled includes psy\n")
+    sys.stdout.write(f"   plugins.psy.actor_id = {psy.get('actor_id') or '<anonymous>'}\n")
+    sys.stdout.write(f"   plugins.psy.allow_anonymous = {str(psy.get('allow_anonymous')).lower()}\n")
+    sys.stdout.write(f"ok Trust-layer paths ready: {config.db_path.parent}\n")
+
+    if args.install_skill:
+        skill_path = (
+            Path(args.skill_path).expanduser()
+            if args.skill_path
+            else default_trust_layer_skill_path(config_path.parent)
+        )
+        result = install_trust_layer_skill(skill_path)
+        sys.stdout.write(f"ok Hermes skill installed: {result.path}\n")
+        if result.backup_path:
+            sys.stdout.write(f"   previous skill backed up to {result.backup_path}\n")
+        elif not result.changed:
+            sys.stdout.write("   skill already up to date\n")
+
+    sys.stdout.write("\nDoctor:\n")
+    doctor_rc = cmd_doctor(argparse.Namespace(config=str(config_path)))
+    if doctor_rc != 0:
+        return doctor_rc
+
+    if args.verify:
+        verify_rc = _run_psy_verify(config)
+        if verify_rc != 0:
+            return verify_rc
+
+    sys.stdout.write("\nNext:\n")
+    sys.stdout.write("  restart Hermes for plugin discovery\n")
+    sys.stdout.write('  ask: "Use the psy-core trust layer skill to verify my setup."\n\n')
+    sys.stdout.write(TRUST_LAYER_FRAMING)
+    return 0
+
+
+def _ensure_psy_section(raw: dict[str, Any], config_path: Path) -> dict[str, Any]:
     plugins = raw.setdefault("plugins", {})
     if not isinstance(plugins, dict):
         raise SystemExit(f"psy-core-hermes: plugins must be a mapping in {config_path}")
@@ -151,16 +288,41 @@ def cmd_init(args: argparse.Namespace) -> int:
     psy = plugins.setdefault("psy", {})
     if not isinstance(psy, dict):
         raise SystemExit(f"psy-core-hermes: plugins.psy must be a mapping in {config_path}")
-    psy.setdefault("enabled", True)
+    return cast(dict[str, Any], psy)
+
+
+def _configure_trust_layer_section(
+    psy: dict[str, Any],
+    config_path: Path,
+    args: argparse.Namespace,
+) -> None:
+    hermes_home = config_path.parent
+    psy["enabled"] = True
     if args.actor_id:
         psy["actor_id"] = args.actor_id
-    if args.allow_anonymous:
-        psy["allow_anonymous"] = True
-    psy.setdefault("psy_core_version", PSY_CORE_VERSION)
+    if args.tenant_id:
+        psy["tenant_id"] = args.tenant_id
+    if args.purpose:
+        psy["purpose"] = args.purpose
+    psy["allow_anonymous"] = bool(args.allow_anonymous)
+    psy["psy_core_version"] = PSY_CORE_VERSION
+    psy["payload_capture"] = bool(args.payload_capture)
+    psy["redactor"] = args.redactor
+    psy.setdefault("db_path", str(hermes_home / "psy" / "audit.db"))
+    psy.setdefault("seal_key_path", str(hermes_home / "psy" / "seal-key"))
+    psy.setdefault("memories_dir", str(hermes_home / "memories"))
+    if args.psy_binary:
+        psy["psy_binary"] = str(Path(args.psy_binary).expanduser())
+    elif not psy.get("psy_binary"):
+        on_path = shutil.which("psy")
+        if on_path:
+            psy["psy_binary"] = on_path
 
-    _write_config(config_path, raw)
-    sys.stdout.write(f"psy-core-hermes: wrote plugins.psy block to {config_path}\n")
-    return 0
+
+def _prepare_trust_layer_paths(config: PsyHermesConfig) -> None:
+    config.db_path.parent.mkdir(parents=True, exist_ok=True)
+    config.seal_key_path.parent.mkdir(parents=True, exist_ok=True)
+    config.memories_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_or_empty(args: argparse.Namespace) -> tuple[Path, PsyHermesConfig | None, str | None]:
@@ -233,6 +395,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         out.write(f"  handshake:           {json.dumps(handshake)}\n")
     finally:
         client.close()
+    out.write("\nTrust-layer framing:\n")
+    for line in TRUST_LAYER_FRAMING.strip().splitlines():
+        out.write(f"  {line}\n" if line else "\n")
     return 0
 
 
@@ -381,6 +546,32 @@ def _ingest_env(config: PsyHermesConfig) -> dict[str, str]:
         "PSY_SEAL_KEY_PATH": str(config.seal_key_path),
         "PSY_HEAD_PATH": str(config.seal_key_path.with_name("head.json")),
     }
+
+
+def _run_psy_verify(config: PsyHermesConfig) -> int:
+    plan = resolve_spawn_plan(config.psy_binary, config.psy_core_version)
+    argv = [*plan.argv[:-1], "verify", "--all", "--no-color"]
+    env = {**os.environ, **_ingest_env(config)}
+    sys.stdout.write("\nVerify:\n")
+    sys.stdout.write(f"  command:             {argv}\n")
+    proc = subprocess.run(
+        argv,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.stdout:
+        for line in proc.stdout.rstrip().splitlines():
+            sys.stdout.write(f"  {line}\n")
+    if proc.stderr:
+        for line in proc.stderr.rstrip().splitlines():
+            sys.stderr.write(f"  {line}\n")
+    if proc.returncode == 0:
+        sys.stdout.write("  result:              passed\n")
+    else:
+        sys.stdout.write(f"  result:              failed (exit {proc.returncode})\n")
+    return proc.returncode
 
 
 if __name__ == "__main__":  # pragma: no cover

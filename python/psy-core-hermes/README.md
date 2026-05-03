@@ -20,14 +20,26 @@ The result is simple: Hermes keeps improving, and you get a verifiable trail of 
 
 ```bash
 pip install psy-core-hermes
-psy-core-hermes init --actor-id you@example.com
+psy-core-hermes trust-layer --actor-id you@example.com
 ```
 
-Then run Hermes normally:
+That command configures the plugin, installs the local Hermes skill
+`psy-core-trust-layer`, runs `doctor`, and runs `psy verify --all`.
+
+Then restart Hermes:
 
 ```bash
 hermes
 ```
+
+Inside Hermes, ask:
+
+```text
+Use the psy-core trust layer skill to verify my setup.
+```
+
+Use psy-core as the trust layer for Hermes's self-improvement loop.
+Hermes's magic is that it learns. psy-core's value is making that learning accountable.
 
 In another terminal:
 
@@ -40,6 +52,9 @@ When Hermes writes `MEMORY.md`, `USER.md`, or a skill file, you should see paire
 ```bash
 psy verify --all
 ```
+
+The smaller `psy-core-hermes init --actor-id you@example.com` command is still
+available when you only want idempotent config insertion.
 
 ## Why This Exists
 
@@ -110,7 +125,9 @@ If your app also calls Mem0, Letta, LangChain, or LangGraph directly, use the de
 
 | Goal | Command |
 |---|---|
-| Enable plugin in `~/.hermes/config.yaml` | `psy-core-hermes init --actor-id you@example.com` |
+| Configure plugin, install skill, run doctor, and verify | `psy-core-hermes trust-layer --actor-id you@example.com` |
+| Install or refresh only the Hermes operating skill | `psy-core-hermes install-skill` |
+| Enable only the plugin in `~/.hermes/config.yaml` | `psy-core-hermes init --actor-id you@example.com` |
 | Allow anonymous local testing | `psy-core-hermes init --allow-anonymous` |
 | Diagnose config, paths, Node, `npx`, and subprocess handshake | `psy-core-hermes doctor` |
 | Print a compact current status | `psy-core-hermes status` |
@@ -129,7 +146,8 @@ If your app also calls Mem0, Letta, LangChain, or LangGraph directly, use the de
 psy = "psy_core.hermes.register"
 ```
 
-After `psy-core-hermes init`, your Hermes config contains:
+After `psy-core-hermes trust-layer --actor-id you@example.com`, your Hermes
+config contains the plugin block plus explicit trust-layer paths:
 
 ```yaml
 plugins:
@@ -139,7 +157,26 @@ plugins:
   psy:
     enabled: true
     actor_id: you@example.com
+    allow_anonymous: false
+    db_path: ~/.hermes/psy/audit.db
+    seal_key_path: ~/.hermes/psy/seal-key
+    memories_dir: ~/.hermes/memories
     psy_core_version: 0.4.0
+```
+
+The command also writes:
+
+```text
+~/.hermes/skills/devops/psy-core-trust-layer/SKILL.md
+```
+
+Useful bootstrap flags:
+
+```bash
+psy-core-hermes trust-layer --actor-id alice@example.com --no-verify
+psy-core-hermes trust-layer --actor-id alice@example.com --psy-binary /usr/local/bin/psy
+psy-core-hermes trust-layer --actor-id alice@example.com --no-payload-capture
+psy-core-hermes trust-layer --allow-anonymous   # local experiments only
 ```
 
 At runtime, the plugin starts the audit writer using this order:
@@ -282,7 +319,7 @@ The stats path opens SQLite read-only.
 
 ## Versioning and Compatibility
 
-This package version: `psy-core-hermes 0.1.2`
+This package version: `psy-core-hermes 0.1.3`
 
 Pinned Node audit engine: `psy-core 0.4.0`
 
