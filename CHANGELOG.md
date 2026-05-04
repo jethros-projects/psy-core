@@ -10,6 +10,22 @@ A schema bump only happens when the event row shape changes incompatibly.
 
 ## [Unreleased]
 
+### Added
+
+- **GBrain adapter.** New `psy-core/gbrain` subpath wraps GBrain's
+  exported operation array and direct `BrainEngine` instances. The adapter
+  records page, tag, link, timeline, raw-data, chunk, graph, version,
+  transaction, and rename-shaped memory calls using `gbrain://` memory
+  paths, with query text hashed in `memory_path` by default. Non-memory
+  infrastructure surfaces such as raw SQL, config, migrations, jobs,
+  eval/code capture, and health/stats stay out of default scope and can be
+  opted in with classifier hooks.
+- **GBrain live validation.** Added `npm run test:gbrain`,
+  `npm run test:gbrain:live`, and `npm run test:gbrain:live:ops`.
+  The live path runs a real GBrain PGLite engine through psy's SQLite audit
+  store and drives GBrain's real Bun `operations.ts` boundary with an
+  in-memory capture store.
+
 ## [0.4.0] - 2026-04-29
 
 ### Added

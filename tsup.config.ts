@@ -70,6 +70,15 @@ export default defineConfig([
     ],
   },
   {
+    entry: { 'gbrain/index': 'src/adapters/gbrain/index.ts' },
+    format: ['esm'],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+    target: 'node20',
+    external: ['better-sqlite3', '@anthropic-ai/sdk', 'gbrain'],
+  },
+  {
     entry: ['src/cli.ts'],
     format: ['esm'],
     dts: false,
