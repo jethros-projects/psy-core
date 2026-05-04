@@ -1,0 +1,68 @@
+{
+  "name": "psy-core-openclaw",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin that audits memory and skill access into a psy-core tamper-evident chain.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "openclaw",
+    "psy-core",
+    "audit",
+    "memory",
+    "skills"
+  ],
+  "homepage": "https://github.com/jethros-projects/psy-core#readme",
+  "bugs": {
+    "url": "https://github.com/jethros-projects/psy-core/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jethros-projects/psy-core.git",
+    "directory": "plugins/psy-core-openclaw"
+  },
+  "files": [
+    "AGENT_INSTALL.md",
+    "README.md",
+    "openclaw.plugin.json",
+    "skills",
+    "src"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./src/index.js"
+    ],
+    "install": {
+      "npmSpec": "psy-core-openclaw@0.1.0",
+      "localPath": "plugins/psy-core-openclaw",
+      "defaultChoice": "local",
+      "minHostVersion": ">=2026.4.29"
+    },
+    "compat": {
+      "pluginApi": ">=2026.4.29",
+      "minGatewayVersion": "2026.4.29"
+    },
+    "build": {
+      "openclawVersion": "2026.4.29",
+      "pluginSdkVersion": "2026.4.29"
+    },
+    "release": {
+      "publishToClawHub": false,
+      "publishToNpm": false
+    }
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.29"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.14"
+  }
+}

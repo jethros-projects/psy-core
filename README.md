@@ -58,8 +58,9 @@ psy verify --all
 | LangChain chat history | `npm install @langchain/core` | `psy-core/langchain` | view, insert, delete |
 | LangGraph checkpointers | `npm install @langchain/langgraph-checkpoint` | `psy-core/langgraph` | view, create, insert, delete |
 | Hermes Agent memory and skills | `pip install psy-core-hermes` | Python plugin | create, str_replace, delete |
+| OpenClaw memory and skills | `openclaw plugins install ./plugins/psy-core-openclaw` | OpenClaw plugin | view, create, str_replace, delete |
 
-The Node adapters write directly to the audit store. The Hermes adapter runs in Python and streams canonical JSONL into `psy ingest`, so it lands in the same chain and verifies with the same CLI.
+The Node adapters write directly to the audit store. The Hermes adapter runs in Python and streams canonical JSONL into `psy ingest`, so it lands in the same chain and verifies with the same CLI. The OpenClaw plugin observes memory and skill tool calls from OpenClaw's plugin hooks and writes psy-compatible audit envelopes in-process; see [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md).
 
 ## Getting Started
 
@@ -222,6 +223,17 @@ psy-core-hermes init --actor-id you@example.com
 
 Hermes writes to `MEMORY.md`, `USER.md`, and skills are observed from the Python process and streamed into `psy ingest`. See [`python/psy-core-hermes`](python/psy-core-hermes/README.md) and [`examples/hermes-agent`](examples/hermes-agent/README.md).
 
+### OpenClaw
+
+```bash
+openclaw plugins install ./plugins/psy-core-openclaw
+openclaw config set plugins.entries.psy-core.enabled true
+openclaw config set plugins.entries.psy-core.config.actorId "you@example.com"
+openclaw gateway restart
+```
+
+The OpenClaw plugin observes tool calls that touch `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, `skill_workshop`, `memory-lancedb`, and `memory-wiki` surfaces. It writes paired psy audit envelopes directly from OpenClaw plugin hooks without shelling out to a `psy` binary. See [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md).
+
 ## Provider Discovery
 
 Adapters self-register when their subpath is imported:
@@ -288,6 +300,7 @@ Useful environment variables:
 |---|---|
 | Audit a TypeScript/Node agent | [Quick Install](#quick-install) and [Adapter Notes](#adapter-notes) |
 | Audit Hermes Agent | [`python/psy-core-hermes`](python/psy-core-hermes/README.md) |
+| Audit OpenClaw | [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md) |
 | Try the Hermes integration end to end | [`examples/hermes-agent`](examples/hermes-agent/README.md) |
 | Understand integrity checks | [How the Chain Works](#how-the-chain-works) and [Guarantees and Limits](#guarantees-and-limits) |
 | Wire a non-Node observer | `psy ingest` in [CLI Quick Reference](#cli-quick-reference) |
@@ -299,6 +312,7 @@ Useful environment variables:
 |---|---|
 | `src/` | TypeScript audit engine, CLI, store, verifier, and Node adapters |
 | `python/psy-core-hermes/` | Hermes Agent Python plugin |
+| `plugins/psy-core-openclaw/` | OpenClaw plugin for memory and skill audit hooks |
 | `examples/hermes-agent/` | Local walkthrough for Hermes plus psy |
 | `.github/workflows/` | Node, Python, publish, and cross-language e2e workflows |
 
