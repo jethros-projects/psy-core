@@ -19,6 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/checkout@v4
+        with:
+          repository: openclaw/openclaw
+          path: openclaw-official
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -36,6 +41,8 @@ jobs:
 
       - name: Run package tests
         run: npm test
+        env:
+          OPENCLAW_REPO: ${{ github.workspace }}/openclaw-official
 
       - name: Publish with provenance
         run: npm publish --provenance --access public
