@@ -4,7 +4,6 @@
   "description": "OpenClaw plugin that audits memory and skill access into a psy-core tamper-evident chain.",
   "type": "module",
   "license": "MIT",
-  "private": true,
   "keywords": [
     "openclaw",
     "psy-core",
@@ -35,7 +34,7 @@
     "install": {
       "npmSpec": "psy-core-openclaw@0.1.1",
       "localPath": "plugins/psy-core-openclaw",
-      "defaultChoice": "local",
+      "defaultChoice": "npm",
       "minHostVersion": ">=2026.4.29"
     },
     "compat": {
@@ -48,7 +47,7 @@
     },
     "release": {
       "publishToClawHub": false,
-      "publishToNpm": false
+      "publishToNpm": true
     }
   },
   "peerDependencies": {

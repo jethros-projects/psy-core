@@ -22,9 +22,12 @@ test("package ships agent-facing install docs and bundled skill", () => {
   assert.deepEqual(manifest.skills, ["./skills"]);
   assert.ok(pkg.files.includes("AGENT_INSTALL.md"));
   assert.ok(pkg.files.includes("skills"));
+  assert.equal(pkg.private, undefined);
+  assert.equal(pkg.openclaw.install.defaultChoice, "npm");
   assert.equal(pkg.openclaw.install.localPath, "plugins/psy-core-openclaw");
   assert.equal(pkg.openclaw.install.minHostVersion, ">=2026.4.29");
   assert.equal(pkg.openclaw.compat.pluginApi, ">=2026.4.29");
+  assert.equal(pkg.openclaw.release.publishToNpm, true);
   assert.equal(pkg.peerDependencies.openclaw, ">=2026.4.29");
 
   const skill = readText("skills/psy-core-openclaw/SKILL.md");
