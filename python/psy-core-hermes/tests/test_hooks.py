@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from psy_core.hermes.config import PsyHermesConfig
-from psy_core.hermes.hooks import _MEMORY_ACTION_MAP, HookHandlers
+from psy_core.hermes.hooks import _MEMORY_ACTION_MAP, HookHandlers, make_hook_handlers
 
 
 def test_pre_tool_call_emits_intent_for_memory_add(hooks: HookHandlers, fake_ingest: Any) -> None:
@@ -127,6 +128,24 @@ def test_post_tool_call_emits_result_for_skill_manage(hooks: HookHandlers, fake_
     assert fake_ingest.sent[1]["operation"] == "str_replace"
 
 
+def test_post_tool_call_removes_pending_skill_intent(hooks: HookHandlers) -> None:
+    hooks.pre_tool_call(
+        tool_name="skill_manage",
+        args={"action": "create", "name": "demo", "content": "x"},
+        tool_call_id="skill-pending",
+    )
+    assert "skill-pending" in hooks.pending
+
+    hooks.post_tool_call(
+        tool_name="skill_manage",
+        args={"action": "create", "name": "demo", "content": "x"},
+        tool_call_id="skill-pending",
+        result="created",
+    )
+
+    assert "skill-pending" not in hooks.pending
+
+
 def test_post_tool_call_skips_memory_tool(hooks: HookHandlers, fake_ingest: Any) -> None:
     """The `memory` tool is in _AGENT_LOOP_TOOLS upstream, so post_tool_call
     never fires for it. The watcher emits the result envelope instead.
@@ -143,10 +162,10 @@ def test_post_tool_call_skips_memory_tool(hooks: HookHandlers, fake_ingest: Any)
 def test_pre_tool_call_swallows_handler_exceptions(hooks: HookHandlers, fake_ingest: Any) -> None:
     """A handler exception MUST NOT escape into Hermes's executor."""
 
-    def boom(_: dict) -> bool:
+    def boom(_: dict[str, Any]) -> bool:
         raise RuntimeError("boom")
 
-    fake_ingest.send = boom  # type: ignore[method-assign]
+    fake_ingest.send = boom
     # Should not raise.
     hooks.pre_tool_call(
         tool_name="memory",
@@ -160,7 +179,6 @@ def test_dry_run_short_circuits_send(
     fake_ingest: Any,
 ) -> None:
     cfg = base_config.model_copy(update={"dry_run": True})
-    from psy_core.hermes.hooks import make_hook_handlers
 
     handlers = make_hook_handlers(cfg, fake_ingest, redactor=None)
     handlers.pre_tool_call(
@@ -181,6 +199,66 @@ def test_pre_tool_call_records_pending_for_watcher(hooks: HookHandlers) -> None:
     pending = hooks.take_pending("p-1", max_age_s=5.0)
     assert pending is not None
     assert pending.tool_name == "memory"
+
+
+def test_take_pending_discards_stale_entries(hooks: HookHandlers) -> None:
+    hooks.pre_tool_call(
+        tool_name="memory",
+        args={"action": "add", "content": "stale"},
+        tool_call_id="too-old",
+    )
+    with hooks.pending_lock:
+        pending = hooks.pending["too-old"]
+        hooks.pending["too-old"] = pending.__class__(
+            call_id=pending.call_id,
+            operation=pending.operation,
+            tool_name=pending.tool_name,
+            memory_path=pending.memory_path,
+            args=pending.args,
+            enqueued_at=time.monotonic() - 60.0,
+            session_id=pending.session_id,
+        )
+
+    assert hooks.take_pending("too-old", max_age_s=1.0) is None
+    assert "too-old" not in hooks.pending
+
+
+def test_payload_capture_false_omits_payload(
+    base_config: PsyHermesConfig,
+    fake_ingest: Any,
+) -> None:
+    cfg = base_config.model_copy(update={"payload_capture": False})
+    handlers = make_hook_handlers(cfg, fake_ingest, redactor=None)
+
+    handlers.pre_tool_call(
+        tool_name="memory",
+        args={"action": "add", "content": "hello"},
+        tool_call_id="no-payload",
+    )
+
+    env = fake_ingest.sent[0]
+    assert env["call_id"] == "no-payload"
+    assert env["identity"]["actor_id"] == "alice@acme.com"
+    assert "payload" not in env
+
+
+def test_custom_redactor_is_applied_before_send(
+    base_config: PsyHermesConfig,
+    fake_ingest: Any,
+) -> None:
+    def redactor(payload: Any) -> dict[str, str]:
+        assert payload["tool"] == "memory"
+        return {"redacted": "yes"}
+
+    handlers = make_hook_handlers(base_config, fake_ingest, redactor=redactor)
+
+    handlers.pre_tool_call(
+        tool_name="memory",
+        args={"action": "add", "content": "secret"},
+        tool_call_id="custom-redactor",
+    )
+
+    assert fake_ingest.sent[0]["payload"] == {"redacted": "yes"}
 
 
 def test_memory_action_map_covers_documented_actions() -> None:

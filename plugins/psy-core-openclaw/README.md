@@ -25,7 +25,7 @@ or require a `psy` binary at runtime; install `psy-core` only when you want the
 sudo -iu openclaw
 mkdir -p ~/.local/openclaw-plugins ~/.psy
 cp -R /path/to/psy-core/plugins/psy-core-openclaw ~/.local/openclaw-plugins/
-npm install -g psy-core@0.5.0
+npm install -g psy-core@0.5.1
 openclaw plugins install ~/.local/openclaw-plugins/psy-core-openclaw
 openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "alice@example.com"
@@ -58,7 +58,7 @@ plugins/psy-core-openclaw/AGENT_INSTALL.md as the procedure. Run all commands as
 the same service user that runs OpenClaw. Keep the plugin under a durable local
 path, enable plugins.entries.psy-core, set plugins.entries.psy-core.config.actorId
 to my operator identity, restart the OpenClaw gateway, and verify with
-openclaw plugins inspect psy-core --json. Install psy-core@0.5.0 only if you
+openclaw plugins inspect psy-core --json. Install psy-core@0.5.1 only if you
 need the psy CLI, then verify the chain with PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db"
 PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" PSY_HEAD_PATH="$HOME/.psy/head.json"
 psy verify --all.
@@ -100,7 +100,7 @@ verification and troubleshooting.
           dbPath: "~/.psy/audit.db",
           sealKeyPath: "~/.psy/seal-key",
           // Deprecated compatibility fields; ignored by current plugin builds.
-          psyCoreVersion: "0.5.0",
+          psyCoreVersion: "0.5.1",
           psyBinary: null,
           payloadCapture: false,
           allowAnonymous: false,

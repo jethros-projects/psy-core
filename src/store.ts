@@ -233,8 +233,17 @@ export class PsyStore {
       params.session = filters.session;
     }
     if (filters.operation) {
-      where.push('operation = @operation');
-      params.operation = filters.operation;
+      const operations = Array.isArray(filters.operation) ? filters.operation : [filters.operation];
+      if (operations.length === 1) {
+        where.push('operation = @operation');
+        params.operation = operations[0];
+      } else if (operations.length > 1) {
+        const placeholders = operations.map((_operation, index) => `@operation${index}`);
+        where.push(`operation IN (${placeholders.join(', ')})`);
+        operations.forEach((operation, index) => {
+          params[`operation${index}`] = operation;
+        });
+      }
     }
     if (filters.since) {
       where.push('timestamp >= @since');

@@ -3,6 +3,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -92,8 +93,10 @@ export class Sealer {
     }
     const key = randomBytes(SEAL_KEY_BYTES);
     mkdirSync(path.dirname(opts.keyPath), { recursive: true });
-    writeKeyFile(opts.keyPath, key);
-    return { sealer: new Sealer(opts.headPath, opts.keyPath, key), keyCreated: true };
+    if (writeKeyFile(opts.keyPath, key)) {
+      return { sealer: new Sealer(opts.headPath, opts.keyPath, key), keyCreated: true };
+    }
+    return { sealer: Sealer.load(opts), keyCreated: false };
   }
 
   /** Returns the on-disk paths the sealer is configured for. */
@@ -268,25 +271,8 @@ function resolveKey(opts: SealerOptions): Buffer {
   );
 }
 
-function writeKeyFile(keyPath: string, key: Buffer): void {
-  const tmp = `${keyPath}.tmp.${process.pid}`;
-  // O_CREAT|O_EXCL: atomic exclusive create. If a temp from a crashed prior
-  // process exists, openSync will throw EEXIST — we unlink and retry once.
-  let fd: number;
-  try {
-    fd = openSync(tmp, 'wx', 0o600);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      try {
-        unlinkSync(tmp);
-      } catch {
-        // ignore
-      }
-      fd = openSync(tmp, 'wx', 0o600);
-    } else {
-      throw error;
-    }
-  }
+function writeKeyFile(keyPath: string, key: Buffer): boolean {
+  const { tmp, fd } = openUniqueTempKeyFile(keyPath);
   try {
     const buf = Buffer.from(`${key.toString('hex')}\n`, 'utf8');
     let offset = 0;
@@ -299,15 +285,52 @@ function writeKeyFile(keyPath: string, key: Buffer): void {
   }
   // Defense-in-depth: ensure mode 0600 even if umask interfered with O_CREAT.
   chmodSync(tmp, 0o600);
-  renameSync(tmp, keyPath);
+  // Hard-link publish is atomic create-if-absent at the final path; unlike
+  // rename, it cannot overwrite a key another bootstrap already installed.
+  try {
+    linkSync(tmp, keyPath);
+  } catch (error) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // ignore
+    }
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      return false;
+    }
+    throw error;
+  }
+  try {
+    unlinkSync(tmp);
+  } catch {
+    // ignore
+  }
   chmodSync(keyPath, 0o600);
   fsyncDir(path.dirname(keyPath));
+  return true;
+}
+
+function openUniqueTempKeyFile(keyPath: string): { tmp: string; fd: number } {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const tmp = `${keyPath}.tmp.${process.pid}.${randomBytes(8).toString('hex')}`;
+    try {
+      return { tmp, fd: openSync(tmp, 'wx', 0o600) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function fsyncDir(dirPath: string): void {
-  // Durably persist a rename: POSIX atomic rename only guarantees the rename
-  // ITSELF is indivisible, not that the directory entry is on stable storage.
-  // Without this fsync, a power loss after rename can lose the rename.
+  // Durably persist directory entry updates: POSIX atomic rename/link only
+  // guarantees the operation itself is indivisible, not that the directory
+  // entry is on stable storage. Without this fsync, a power loss after the
+  // update can lose it.
   // (On Windows this is a no-op since directory fsync isn't required.)
   if (process.platform === 'win32') return;
   let fd: number | undefined;

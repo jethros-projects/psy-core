@@ -33,6 +33,7 @@ export const DEFAULT_AUDIT_DB_PATH = ".psy/events.sqlite";
 type AuditorRuntimeOptions = AuditorOptions & Partial<WrapOptions> & { archivesPath?: string };
 
 type AuditJsonObject = { [key: string]: JsonValue | undefined };
+const AUDIT_METADATA_KEY = "__psy_audit";
 
 export interface AuditPayload extends AuditJsonObject {
   status: AuditStatus;
@@ -43,6 +44,9 @@ export interface AuditPayload extends AuditJsonObject {
   payloadPreview?: JsonValue;
   error?: JsonValue;
   result?: JsonValue;
+  payloadRedacted?: boolean;
+  redactorId?: string | null;
+  redactorError?: string | null;
   purpose?: string;
 }
 
@@ -321,6 +325,7 @@ export function storedEventToAuditEvent(event: AuditEvent): AuditRecord {
     : isAuditStatus(payload.status)
       ? payload.status
       : statusFromOutcome(event.outcome);
+  const paths = isJsonObject(payload.paths) ? pathsFromJson(payload.paths) : undefined;
 
   return {
     schemaVersion: 1,
@@ -337,8 +342,11 @@ export function storedEventToAuditEvent(event: AuditEvent): AuditRecord {
       sessionId: event.session_id,
     },
     memoryPath: event.memory_path,
-    paths: isJsonObject(payload.paths) ? pathsFromJson(payload.paths) : { path: event.memory_path },
-    ...(isJsonObject(payload.payloadPreview) ? { payloadPreview: previewFromJson(payload.payloadPreview) } : {}),
+    paths: paths && Object.keys(paths).length > 0 ? paths : { path: event.memory_path },
+    ...(isJsonObject(payload.payloadPreview) ? maybePayloadPreview(payload.payloadPreview) : {}),
+    payloadRedacted: event.payload_redacted,
+    ...(event.redactor_id === null ? {} : { redactorId: event.redactor_id }),
+    ...(event.redactor_error === null ? {} : { redactorError: event.redactor_error }),
     ...(isJsonObject(payload.error)
       ? { error: errorFromJson(payload.error) }
       : event.error_message
@@ -378,6 +386,37 @@ export function operationFor(input: Pick<AuditEventInput, "command">): string {
   return input.command;
 }
 
+function payloadPreviewForStorage(
+  input: AuditEventInput,
+  payload: AuditPayload,
+  memoryPath: string,
+): string | null {
+  if (!needsAuditMetadataEnvelope(input, memoryPath)) {
+    return input.payloadPreview ? canonicalJson(input.payloadPreview) : null;
+  }
+
+  const stored: AuditJsonObject = {};
+  if (input.payloadPreview) {
+    Object.assign(stored, input.payloadPreview);
+  }
+  stored[AUDIT_METADATA_KEY] = payload as unknown as JsonValue;
+  return canonicalJson(stored);
+}
+
+function needsAuditMetadataEnvelope(input: AuditEventInput, memoryPath: string): boolean {
+  return (
+    input.result !== undefined ||
+    input.error !== undefined ||
+    hasNonPrimaryPathMetadata(input.paths, memoryPath)
+  );
+}
+
+function hasNonPrimaryPathMetadata(paths: AuditEventInput["paths"], memoryPath: string): boolean {
+  if (!paths) return false;
+  if (paths.old_path !== undefined || paths.new_path !== undefined) return true;
+  return paths.path !== undefined && paths.path !== memoryPath;
+}
+
 function createDraftEvent(input: AuditEventInput, now?: () => Date | string): DraftAuditEvent {
   const payload = auditPayload(input);
   const operation = operationFor(input);
@@ -385,6 +424,7 @@ function createDraftEvent(input: AuditEventInput, now?: () => Date | string): Dr
   const operationId = input.callId;
   const memoryPath = input.memoryPath ?? input.paths?.path ?? input.paths?.old_path ?? input.paths?.new_path ?? "/memories";
   const error = input.error;
+  const payloadPreview = payloadPreviewForStorage(input, payload, memoryPath);
 
   return {
     schema_version: SCHEMA_VERSION,
@@ -399,7 +439,7 @@ function createDraftEvent(input: AuditEventInput, now?: () => Date | string): Dr
     session_id: input.identity.sessionId,
     memory_path: memoryPath,
     purpose: input.purpose ?? null,
-    payload_preview: input.payloadPreview ? canonicalJson(input.payloadPreview) : null,
+    payload_preview: payloadPreview,
     payload_redacted: input.payloadRedacted ?? false,
     redactor_id: input.redactorId ?? null,
     redactor_error: input.redactorError ?? (input.status === "redactor_failed" ? (error?.message ?? "redactor failed") : null),
@@ -595,24 +635,46 @@ function toInternalVerifyResult(result: VerifyResult): InternalVerifyResult {
 }
 
 function parsePayload(event: AuditEvent): Partial<AuditPayload> {
+  const fallback = {
+    status: statusFromOutcome(event.outcome),
+    command: commandFromOperation(event.operation),
+  };
+
   if (!event.payload_preview) {
-    return {
-      status: statusFromOutcome(event.outcome),
-      command: commandFromOperation(event.operation),
-    };
+    return fallback;
   }
 
   try {
+    const parsed = JSON.parse(event.payload_preview) as unknown;
+    if (!isJsonObject(parsed)) {
+      return fallback;
+    }
+
+    const metadata = parsed[AUDIT_METADATA_KEY];
+    if (isJsonObject(metadata)) {
+      const preview = isJsonObject(metadata.payloadPreview)
+        ? metadata.payloadPreview
+        : previewFromStoredPayload(parsed);
+      return {
+        ...fallback,
+        ...metadata,
+        ...(preview === undefined ? {} : { payloadPreview: preview as unknown as JsonValue }),
+      };
+    }
+
+    if (looksLikeAuditPayload(parsed)) {
+      return {
+        ...fallback,
+        ...parsed,
+      };
+    }
+
     return {
-      status: statusFromOutcome(event.outcome),
-      command: commandFromOperation(event.operation),
-      payloadPreview: JSON.parse(event.payload_preview) as unknown as JsonValue,
+      ...fallback,
+      payloadPreview: parsed as unknown as JsonValue,
     };
   } catch {
-    return {
-      status: statusFromOutcome(event.outcome),
-      command: commandFromOperation(event.operation),
-    };
+    return fallback;
   }
 }
 
@@ -678,6 +740,22 @@ function pathsFromJson(value: AuditJsonObject): AuditRecord["paths"] {
   };
 }
 
+function maybePayloadPreview(value: AuditJsonObject): Pick<AuditRecord, "payloadPreview"> | {} {
+  const payloadPreview = previewFromJson(value);
+  return payloadPreview === undefined ? {} : { payloadPreview };
+}
+
+function previewFromStoredPayload(value: AuditJsonObject): AuditJsonObject | undefined {
+  const preview: AuditJsonObject = {};
+  for (const field of ["file_text", "insert_text", "new_str"] as const) {
+    const item = value[field];
+    if (typeof item === "string") {
+      preview[field] = item;
+    }
+  }
+  return Object.keys(preview).length === 0 ? undefined : preview;
+}
+
 function previewFromJson(value: AuditJsonObject): AuditRecord["payloadPreview"] {
   const preview: AuditRecord["payloadPreview"] = {};
   for (const field of ["file_text", "insert_text", "new_str"] as const) {
@@ -706,4 +784,15 @@ function resultFromJson(value: AuditJsonObject): AuditRecord["result"] {
     kind: kind === "string" || kind === "content_blocks" || kind === "unknown" ? kind : "unknown",
     ...(typeof value.blockCount === "number" ? { blockCount: value.blockCount } : {}),
   };
+}
+
+function looksLikeAuditPayload(value: AuditJsonObject): boolean {
+  return (
+    isAuditStatus(value.status) ||
+    typeof value.command === "string" ||
+    isJsonObject(value.paths) ||
+    isJsonObject(value.result) ||
+    isJsonObject(value.error) ||
+    isJsonObject(value.payloadPreview)
+  );
 }

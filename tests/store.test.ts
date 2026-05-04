@@ -27,6 +27,21 @@ describe('PsyStore', () => {
     store.close();
   });
 
+  it('queries one or more operation names without disturbing pagination order', async () => {
+    const { store } = await openTempStore();
+    store.append(draft({ event_id: 'evt-1', operation_id: 'op-1', operation: 'create' }));
+    store.append(draft({ event_id: 'evt-2', operation_id: 'op-2', operation: 'view' }));
+    store.append(draft({ event_id: 'evt-3', operation_id: 'op-3', operation: 'memory.create' }));
+    store.append(draft({ event_id: 'evt-4', operation_id: 'op-4', operation: 'delete' }));
+
+    assert.deepEqual(store.query({ operation: 'view' }).map((event) => event.event_id), ['evt-2']);
+    assert.deepEqual(
+      store.query({ operation: ['create', 'memory.create'], limit: 1, offset: 1 }).map((event) => event.event_id),
+      ['evt-3'],
+    );
+    store.close();
+  });
+
   it('offers intent/result compatibility helpers over the audit row store', async () => {
     const { store } = await openTempStore();
     const intent = store.appendIntent({

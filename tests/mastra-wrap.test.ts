@@ -98,6 +98,20 @@ describe('mastra wrap (working memory)', () => {
     const events = await readEvents(paths, config);
     expect(events[0]?.memory_path).toBe('mastra://working-memory/t_alone');
   });
+
+  it('preserves the exact working-memory read result', async () => {
+    const { paths, config } = await initProject();
+    const target = stubMemory();
+    const expected = 'exact working memory body';
+    target.getWorkingMemory.mockResolvedValueOnce(expected);
+    const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
+
+    await expect(audited.getWorkingMemory({ threadId: 't1', resourceId: 'res_1' })).resolves.toBe(expected);
+
+    const events = await readEvents(paths, config);
+    const payload = events[1]?.payload_preview ? JSON.parse(events[1].payload_preview) : null;
+    expect(payload?.__psy_audit?.result).toEqual({ kind: 'unknown' });
+  });
 });
 
 describe('mastra wrap (threads)', () => {
@@ -178,6 +192,35 @@ describe('mastra wrap (messages)', () => {
 
     const events = await readEvents(paths, config);
     expect(events[0]?.memory_path).toBe('mastra://messages/unknown');
+  });
+
+  it('uses the first defined message threadId when earlier messages omit it', async () => {
+    const { paths, config } = await initProject();
+    const target = stubMemory();
+    const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
+
+    await audited.updateMessages({
+      messages: [
+        message({ id: 'm_no_thread', threadId: undefined }),
+        message({ id: 'm_threaded', threadId: 't_later' }),
+      ],
+    });
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.operation).toBe('str_replace');
+    expect(events[0]?.memory_path).toBe('mastra://messages/t_later');
+  });
+
+  it('records an explicit empty path for deleteMessages with no ids', async () => {
+    const { paths, config } = await initProject();
+    const target = stubMemory();
+    const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
+
+    await audited.deleteMessages([]);
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.operation).toBe('delete');
+    expect(events[0]?.memory_path).toBe('mastra://messages/empty');
   });
 });
 
@@ -290,13 +333,15 @@ describe('mastra wrap (cross-cutting)', () => {
   it('records handler error and rethrows the original exception', async () => {
     const { paths, config } = await initProject();
     const target = stubMemory();
-    target.saveMessages.mockRejectedValueOnce(new Error('mastra 503'));
+    const error = Object.assign(new Error('mastra 503'), { code: 'E_MASTRA' });
+    target.saveMessages.mockRejectedValueOnce(error);
     const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
 
-    await expect(audited.saveMessages({ messages: [message()] })).rejects.toThrow('mastra 503');
+    await expect(audited.saveMessages({ messages: [message()] })).rejects.toBe(error);
 
     const events = await readEvents(paths, config);
     expect(events.at(-1)?.outcome).toBe('handler_error');
+    expect(events.at(-1)?.error_code).toBe('E_MASTRA');
     expect(events.at(-1)?.error_message).toBe('mastra 503');
   });
 

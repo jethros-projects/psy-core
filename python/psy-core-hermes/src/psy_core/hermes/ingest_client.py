@@ -10,6 +10,10 @@ Threading model:
   the envelope and return immediately — they never own the subprocess pipe.
 - A single background writer thread drains the queue, writes one JSONL line
   per envelope, and reads one ACK line. The pipe is single-owner.
+- stdout is read by one per-process reader thread so handshake/ACK waits can
+  have deadlines without leaving abandoned readline threads behind.
+- stderr is drained by one per-process reader thread so noisy children cannot
+  fill the pipe and block ACK progress.
 - Crash recovery: 3 consecutive subprocess failures put the client into a
   degraded state where new events are dropped and a WARN is logged
   once-per-60s. Resume on next session by reinstantiating the client.
@@ -47,10 +51,26 @@ MAX_CONSECUTIVE_FAILURES = 3
 DEGRADED_WARN_INTERVAL_S = 60.0
 #: Subprocess handshake timeout (seconds).
 STARTUP_TIMEOUT_S = 5.0
+#: Per-envelope ACK timeout (seconds).
+ACK_TIMEOUT_S = 5.0
 #: Soft termination grace period (seconds) before SIGKILL.
 TERM_GRACE_S = 3.0
 #: Maximum events held in memory before drops kick in.
 QUEUE_MAX_SIZE = 1024
+#: Stderr drain chunk size. Chunked reads avoid buffering an unbounded line.
+STDERR_DRAIN_CHARS = 4096
+#: Maximum stderr preview characters included in a single debug log entry.
+STDERR_LOG_PREVIEW_CHARS = 2048
+
+_STDOUT_EOF = object()
+
+
+@dataclass(frozen=True)
+class _ReadLineResult:
+    """Result of a deadline-bound stdout line read."""
+
+    line: str | None
+    timed_out: bool = False
 
 
 @dataclass
@@ -143,15 +163,18 @@ class IngestClient:
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
         startup_timeout_s: float = STARTUP_TIMEOUT_S,
+        ack_timeout_s: float = ACK_TIMEOUT_S,
         log: logging.Logger | None = None,
     ) -> None:
         self._plan = plan
         self._cwd = cwd
         self._env = env or {}
         self._startup_timeout_s = startup_timeout_s
+        self._ack_timeout_s = ack_timeout_s
         self._log = log or LOG
         self._queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=QUEUE_MAX_SIZE)
         self._proc: subprocess.Popen[str] | None = None
+        self._stdout_lines: queue.Queue[str | object] | None = None
         self._writer_thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._consecutive_failures = 0
@@ -218,6 +241,7 @@ class IngestClient:
                 self._queue.put_nowait(None)
             proc = self._proc
             self._proc = None
+            self._stdout_lines = None
         if proc:
             if proc.poll() is None:
                 self._terminate_proc(proc)
@@ -232,14 +256,18 @@ class IngestClient:
                 return
             proc = self._spawn()
             try:
-                handshake = self._read_handshake(proc)
+                stdout_lines = self._start_stdout_reader(proc)
+                self._start_stderr_drain(proc)
+                handshake = self._read_handshake(proc, stdout_lines)
             except Exception:
                 self._terminate_proc(proc)
                 self._close_proc_streams(proc)
                 self._proc = None
+                self._stdout_lines = None
                 self._handshake = None
                 raise
             self._proc = proc
+            self._stdout_lines = stdout_lines
             self._handshake = handshake
             self._writer_thread = threading.Thread(
                 target=self._run_writer,
@@ -262,54 +290,101 @@ class IngestClient:
             env={**_scrub_env(), **self._env},
         )
 
-    def _read_handshake(self, proc: subprocess.Popen[str]) -> dict[str, Any]:
-        deadline = time.monotonic() + self._startup_timeout_s
+    def _start_stdout_reader(
+        self,
+        proc: subprocess.Popen[str],
+    ) -> queue.Queue[str | object]:
         if not proc.stdout:
             raise RuntimeError("ingest subprocess has no stdout pipe")
-        # Use a polling-friendly read so we honor the deadline rather than
-        # blocking forever on a child that never wrote a handshake.
-        line = self._readline_with_deadline(proc, deadline)
-        if line is None:
+        lines: queue.Queue[str | object] = queue.Queue()
+
+        def reader() -> None:
+            try:
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    lines.put(line)
+            except (OSError, ValueError):
+                pass
+            finally:
+                lines.put(_STDOUT_EOF)
+
+        thread = threading.Thread(
+            target=reader,
+            name=f"psy-core-hermes-stdout-{proc.pid}",
+            daemon=True,
+        )
+        thread.start()
+        return lines
+
+    def _start_stderr_drain(self, proc: subprocess.Popen[str]) -> None:
+        if not proc.stderr:
+            return
+
+        def drain() -> None:
+            try:
+                assert proc.stderr is not None
+                while True:
+                    chunk = proc.stderr.read(STDERR_DRAIN_CHARS)
+                    if not chunk:
+                        break
+                    preview = chunk.rstrip()
+                    if not preview:
+                        continue
+                    if len(preview) > STDERR_LOG_PREVIEW_CHARS:
+                        preview = preview[:STDERR_LOG_PREVIEW_CHARS] + "..."
+                    self._log.debug("ingest stderr: %s", preview)
+            except (OSError, ValueError):
+                pass
+
+        thread = threading.Thread(
+            target=drain,
+            name=f"psy-core-hermes-stderr-{proc.pid}",
+            daemon=True,
+        )
+        thread.start()
+
+    def _read_handshake(
+        self,
+        proc: subprocess.Popen[str],
+        stdout_lines: queue.Queue[str | object],
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + self._startup_timeout_s
+        result = self._readline_with_deadline(stdout_lines, deadline)
+        if result.timed_out:
             raise TimeoutError(
                 f"ingest subprocess did not emit handshake within {self._startup_timeout_s}s"
             )
+        if result.line is None:
+            raise BrokenPipeError("ingest subprocess closed stdout before handshake")
         try:
-            parsed = json.loads(line)
+            parsed = json.loads(result.line)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"ingest subprocess emitted non-JSON handshake: {line!r}") from exc
+            raise RuntimeError(
+                f"ingest subprocess emitted non-JSON handshake: {result.line!r}"
+            ) from exc
         if not parsed.get("ok"):
             raise RuntimeError(f"ingest subprocess refused handshake: {parsed!r}")
         return cast(dict[str, Any], parsed)
 
     def _readline_with_deadline(
         self,
-        proc: subprocess.Popen[str],
+        stdout_lines: queue.Queue[str | object],
         deadline: float,
-    ) -> str | None:
-        # subprocess.Popen.stdout.readline blocks; for a handshake we want
-        # a deadline. Spawn a thread that reads one line and join it with
-        # a timeout. This is small enough not to warrant aiofiles.
-        result: dict[str, str | None] = {"line": None}
-
-        def reader() -> None:
-            assert proc.stdout is not None
-            line = proc.stdout.readline()
-            result["line"] = line if line else None
-
-        t = threading.Thread(target=reader, daemon=True)
-        t.start()
-        timeout = max(0.01, deadline - time.monotonic())
-        t.join(timeout=timeout)
-        if t.is_alive():
-            return None
-        line = result["line"]
-        if line is None:
-            return None
-        return line.strip() or None
+    ) -> _ReadLineResult:
+        timeout = max(0.0, deadline - time.monotonic())
+        try:
+            item = stdout_lines.get(timeout=timeout)
+        except queue.Empty:
+            return _ReadLineResult(line=None, timed_out=True)
+        if item is _STDOUT_EOF:
+            return _ReadLineResult(line=None)
+        line = cast(str, item).strip()
+        return _ReadLineResult(line=line or None)
 
     def _run_writer(self) -> None:
         proc = self._proc
-        if not proc or not proc.stdin or not proc.stdout:
+        stdout_lines = self._stdout_lines
+        if not proc or not proc.stdin or stdout_lines is None:
             return
         while True:
             try:
@@ -324,18 +399,47 @@ class IngestClient:
                 line = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
                 proc.stdin.write(line + "\n")
                 proc.stdin.flush()
-                ack_line = proc.stdout.readline()
-                if not ack_line:
-                    raise BrokenPipeError("ingest subprocess closed stdout")
-                ack = json.loads(ack_line)
+                ack = self._read_ack(proc, stdout_lines)
                 if not ack.get("ok"):
                     self._log.warning("ingest rejected envelope: %s", ack)
                 self._consecutive_failures = 0
-            except (BrokenPipeError, OSError, json.JSONDecodeError) as exc:
-                self._record_failure(f"writer error: {exc}")
-                # Loop will exit on the next iteration if degraded.
-                if self._degraded_until_restart:
+            except (BrokenPipeError, OSError, TimeoutError, json.JSONDecodeError) as exc:
+                if self._closed:
                     break
+                self._record_failure(f"writer error: {exc}")
+                self._retire_proc(proc)
+                break
+
+    def _read_ack(
+        self,
+        proc: subprocess.Popen[str],
+        stdout_lines: queue.Queue[str | object],
+    ) -> dict[str, Any]:
+        result = self._readline_with_deadline(
+            stdout_lines,
+            time.monotonic() + self._ack_timeout_s,
+        )
+        if result.timed_out:
+            raise TimeoutError(
+                f"ingest subprocess did not ACK envelope within {self._ack_timeout_s}s"
+            )
+        if result.line is None:
+            if proc.poll() is None:
+                raise BrokenPipeError("ingest subprocess closed stdout")
+            raise BrokenPipeError(
+                f"ingest subprocess exited before ACK with code {proc.returncode}"
+            )
+        return cast(dict[str, Any], json.loads(result.line))
+
+    def _retire_proc(self, proc: subprocess.Popen[str]) -> None:
+        with self._lock:
+            if self._proc is proc:
+                self._proc = None
+                self._stdout_lines = None
+                self._handshake = None
+        if proc.poll() is None:
+            self._terminate_proc(proc)
+        self._close_proc_streams(proc)
 
     def _record_failure(self, message: str) -> None:
         self._consecutive_failures += 1

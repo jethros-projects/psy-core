@@ -3,6 +3,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -140,6 +141,8 @@ class PsyIngestStore {
 
     const envelope = parsed.envelope;
     const payload = capturePayload(envelope);
+    const payloadRedacted =
+      envelope.payload !== undefined && envelope.payload !== null && envelope.redact_payload !== false;
     const identity = envelope.identity
       ? {
           actorId: envelope.identity.actor_id ?? null,
@@ -160,6 +163,7 @@ class PsyIngestStore {
               memoryPath: envelope.memory_path,
               purpose: envelope.purpose,
               payload,
+              payloadRedacted,
             })
           : this.appendResult({
               operation: envelope.operation,
@@ -169,6 +173,7 @@ class PsyIngestStore {
               memoryPath: envelope.memory_path,
               purpose: envelope.purpose,
               payload,
+              payloadRedacted,
               outcome: envelope.outcome,
             });
       this.writeHead(event.seq, event.hash, event.timestamp);
@@ -203,6 +208,7 @@ class PsyIngestStore {
         identity: input.identity,
         memoryPath: input.memoryPath,
         purpose: input.purpose,
+        payloadRedacted: input.payloadRedacted,
       }),
     );
   }
@@ -223,6 +229,7 @@ class PsyIngestStore {
           identity: input.identity,
           memoryPath: input.memoryPath,
           purpose: input.purpose,
+          payloadRedacted: input.payloadRedacted,
           outcome: input.outcome,
         }),
       ),
@@ -621,7 +628,7 @@ function createDraftEvent(input) {
     memory_path: input.memoryPath ?? "/memories",
     purpose: input.purpose ?? null,
     payload_preview: payloadJson,
-    payload_redacted: false,
+    payload_redacted: input.payloadRedacted ?? false,
     redactor_id: null,
     redactor_error: null,
     tool_input_hash: hashCanonical(
@@ -753,8 +760,7 @@ function bootstrapSealKey(keyPath, envKey) {
   if (existsSync(keyPath)) return readSealKey(keyPath);
   const key = randomBytes(SEAL_KEY_BYTES);
   mkdirSync(path.dirname(keyPath), { recursive: true });
-  writeKeyFile(keyPath, key);
-  return key;
+  return writeKeyFile(keyPath, key) ? key : readSealKey(keyPath);
 }
 
 function readSealKey(keyPath) {
@@ -780,17 +786,7 @@ function validateHexKey(value, source) {
 }
 
 function writeKeyFile(keyPath, key) {
-  const tmp = `${keyPath}.tmp.${process.pid}`;
-  let fd;
-  try {
-    fd = openSync(tmp, "wx", 0o600);
-  } catch (error) {
-    if (error?.code !== "EEXIST") throw error;
-    try {
-      unlinkSync(tmp);
-    } catch {}
-    fd = openSync(tmp, "wx", 0o600);
-  }
+  const { tmp, fd } = openUniqueTempKeyFile(keyPath);
   try {
     const buffer = Buffer.from(`${key.toString("hex")}\n`, "utf8");
     writeAll(fd, buffer);
@@ -799,9 +795,37 @@ function writeKeyFile(keyPath, key) {
     closeSync(fd);
   }
   chmodSync(tmp, 0o600);
-  renameSync(tmp, keyPath);
+  // Hard-link publish is atomic create-if-absent at the final path; unlike
+  // rename, it cannot overwrite a key another bootstrap already installed.
+  try {
+    linkSync(tmp, keyPath);
+  } catch (error) {
+    try {
+      unlinkSync(tmp);
+    } catch {}
+    if (error?.code === "EEXIST") return false;
+    throw error;
+  }
+  try {
+    unlinkSync(tmp);
+  } catch {}
   chmodSync(keyPath, 0o600);
   fsyncDir(path.dirname(keyPath));
+  return true;
+}
+
+function openUniqueTempKeyFile(keyPath) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const tmp = `${keyPath}.tmp.${process.pid}.${randomBytes(8).toString("hex")}`;
+    try {
+      return { tmp, fd: openSync(tmp, "wx", 0o600) };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function computeHmac(key, payload) {

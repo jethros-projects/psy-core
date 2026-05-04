@@ -20,7 +20,7 @@ import { PsyStore } from './store.js';
 import type { AuditEvent, QueryFilters } from './types.js';
 import { verifyStore } from './verify.js';
 
-export const PSY_CLI_VERSION = '0.5.0';
+export const PSY_CLI_VERSION = '0.5.1';
 
 interface IO {
   stdout: { write(chunk: string): unknown };

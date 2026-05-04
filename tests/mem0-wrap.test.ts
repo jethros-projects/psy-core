@@ -122,6 +122,55 @@ describe('mem0 wrap', () => {
     ]);
   });
 
+  it('gives user scope precedence over other entity scopes', async () => {
+    const { paths, config } = await initProject();
+    const client = stubClient();
+    const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
+
+    await audited.add([], {
+      userId: 'u1',
+      agentId: 'a1',
+      runId: 'r1',
+      appId: 'app1',
+    });
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe('mem0://users/u1/pending');
+  });
+
+  it('records distinct paths for scoped search, getAll, and history reads', async () => {
+    const { paths, config } = await initProject();
+    const client = stubClient();
+    const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
+
+    await audited.search('query text', { agentId: 'a1' });
+    await audited.getAll({ runId: 'r1' });
+    await audited.history('m_42');
+
+    const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
+    expect(intents.map((e) => e.memory_path)).toEqual([
+      'mem0://search/agents/a1',
+      'mem0://all/runs/r1',
+      'mem0://memories/m_42/history',
+    ]);
+  });
+
+  it('preserves exact update results for OSS-style string updates', async () => {
+    const { paths, config } = await initProject();
+    const client = stubClient();
+    const expected = memory({ id: 'm_42', memory: 'updated text' });
+    client.update.mockResolvedValueOnce(expected);
+    const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
+
+    const result = await audited.update('m_42', 'updated text');
+
+    expect(result).toBe(expected);
+    expect(client.update).toHaveBeenCalledWith('m_42', 'updated text');
+    const events = await readEvents(paths, config);
+    const payload = events[1]?.payload_preview ? JSON.parse(events[1].payload_preview) : null;
+    expect(payload?.__psy_audit?.result).toEqual({ kind: 'unknown' });
+  });
+
   it('passes through unwrapped methods like ping', async () => {
     const { paths } = await initProject();
     const client = stubClient();
@@ -130,6 +179,21 @@ describe('mem0 wrap', () => {
     const result = await (audited as unknown as { ping: () => Promise<unknown> }).ping();
     expect(result).toEqual({ ok: true });
     expect(client.ping).toHaveBeenCalledOnce();
+  });
+
+  it('binds pass-through methods to the original client', async () => {
+    const { paths } = await initProject();
+    const client = stubClient();
+    const checkThis = vi.fn(function (this: unknown) {
+      return this;
+    });
+    (client as unknown as { checkThis: typeof checkThis }).checkThis = checkThis;
+    const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
+
+    const result = (audited as unknown as { checkThis: () => unknown }).checkThis();
+
+    expect(result).toBe(client);
+    expect(checkThis).toHaveBeenCalledOnce();
   });
 
   it('rejects anonymous calls and records validation_error', async () => {
@@ -147,13 +211,15 @@ describe('mem0 wrap', () => {
   it('records handler error on update failure and rethrows', async () => {
     const { paths, config } = await initProject();
     const client = stubClient();
-    client.update.mockRejectedValueOnce(new Error('mem0 429'));
+    const error = Object.assign(new Error('mem0 429'), { code: 'E_MEM0' });
+    client.update.mockRejectedValueOnce(error);
     const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
 
-    await expect(audited.update('m_42', { text: 'x' })).rejects.toThrow('mem0 429');
+    await expect(audited.update('m_42', { text: 'x' })).rejects.toBe(error);
 
     const events = await readEvents(paths, config);
     expect(events.at(-1)?.outcome).toBe('handler_error');
+    expect(events.at(-1)?.error_code).toBe('E_MEM0');
     expect(events.at(-1)?.error_message).toBe('mem0 429');
   });
 

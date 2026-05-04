@@ -169,31 +169,45 @@ class MemoryWatcher:
             last.at = now
 
         # Try to pair this change back to a recent pending intent.
-        pending = self._most_recent_pending(within_s=PAIR_WINDOW_S)
+        pending = self._best_pending_for_change(path, within_s=PAIR_WINDOW_S)
         envelope = self._build_envelope(path, digest, pending)
         if self._config.dry_run:
             self._log.info("psy-core-hermes dry-run watcher: %s", envelope)
             return
         self._ingest.send(envelope)
 
-    def _most_recent_pending(self, *, within_s: float) -> Any:
-        """Find the most recent pending intent (any call_id) within window.
+    def _best_pending_for_change(self, path: Path, *, within_s: float) -> Any:
+        """Find the best pending intent for a filesystem memory change.
 
-        We deliberately match on recency, not on memory_path: the Hermes
-        memory tool can be invoked with a `path` arg, but the tool's
-        output is appended to MEMORY.md or USER.md regardless of any
-        sub-path. Pairing strictly by memory_path would miss most events.
+        Prefer a pending intent whose normalized memory_path matches the
+        changed file (USER.md vs MEMORY.md). If there is no exact match,
+        fall back to the most recent pending intent to preserve attribution
+        for older Hermes memory surfaces that do not route neatly by path.
         """
         from psy_core.hermes.hooks import PendingIntent  # local import — avoids cycle
 
+        memory_path = f"/memories/{path.name}"
         cutoff = time.monotonic() - within_s
-        candidate: PendingIntent | None = None
+        exact_candidate: PendingIntent | None = None
+        fallback_candidate: PendingIntent | None = None
         with self._hooks.pending_lock:
             for entry in list(self._hooks.pending.values()):
                 if entry.enqueued_at < cutoff:
                     continue
-                if candidate is None or entry.enqueued_at > candidate.enqueued_at:
-                    candidate = entry
+                if (
+                    entry.memory_path == memory_path
+                    and (
+                        exact_candidate is None
+                        or entry.enqueued_at > exact_candidate.enqueued_at
+                    )
+                ):
+                    exact_candidate = entry
+                if (
+                    fallback_candidate is None
+                    or entry.enqueued_at > fallback_candidate.enqueued_at
+                ):
+                    fallback_candidate = entry
+            candidate = exact_candidate or fallback_candidate
             if candidate is not None:
                 self._hooks.pending.pop(candidate.call_id, None)
         return candidate

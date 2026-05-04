@@ -40,6 +40,19 @@ def test_actor_id_trim_and_emptystring_to_none() -> None:
     assert cfg.actor_id is None
 
 
+def test_optional_identity_fields_are_trimmed_independently() -> None:
+    cfg = load_psy_config(
+        {
+            "actor_id": "  alice@example.com  ",
+            "tenant_id": "   ",
+            "purpose": "  support escalation  ",
+        }
+    )
+    assert cfg.actor_id == "alice@example.com"
+    assert cfg.tenant_id is None
+    assert cfg.purpose == "support escalation"
+
+
 def test_format_actor_id_required_error_includes_required_blocks() -> None:
     msg = format_actor_id_required_error()
     assert "actor_id is required" in msg

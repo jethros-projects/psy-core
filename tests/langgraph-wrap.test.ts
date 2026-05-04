@@ -62,6 +62,14 @@ const baseConfig: LangGraphRunnableConfig = {
   configurable: { thread_id: 't1', checkpoint_ns: '', checkpoint_id: 'cp_42' },
 };
 
+async function consume<T>(items: AsyncIterable<T>): Promise<T[]> {
+  const result: T[] = [];
+  for await (const item of items) {
+    result.push(item);
+  }
+  return result;
+}
+
 describe('langgraph wrap', () => {
   it('audits getTuple/put/putWrites/deleteThread with correct paths', async () => {
     const { paths, config } = await initProject();
@@ -130,6 +138,86 @@ describe('langgraph wrap', () => {
       'view:intent', 'view:result',
     ]);
     expect(events[0]?.memory_path).toBe('langgraph://threads/t1/_/list');
+  });
+
+  it('forwards list options while re-yielding the original tuples', async () => {
+    const { paths, config } = await initProject();
+    const target = stubSaver();
+    const expected = [tuple('cp_a'), tuple('cp_b')];
+    target.list.mockImplementationOnce(async function* (_config, _opts) {
+      yield expected[0]!;
+      yield expected[1]!;
+    });
+    const audited = wrap(target, { actorId: 'tester', configPath: paths.configPath });
+    const listOpts = { limit: 2, filter: { source: 'loop' } };
+
+    const result = await consume(audited.list(baseConfig, listOpts));
+
+    expect(result).toEqual(expected);
+    expect(result[0]).toBe(expected[0]);
+    expect(target.list).toHaveBeenCalledWith(baseConfig, listOpts);
+    const events = await readEvents(paths, config);
+    expect(events).toHaveLength(2);
+  });
+
+  it('records list generator errors and rethrows the exact error object', async () => {
+    const { paths, config } = await initProject();
+    const target = stubSaver();
+    const error = Object.assign(new Error('list failed'), { code: 'E_LIST' });
+    target.list.mockImplementationOnce(async function* () {
+      yield tuple('cp_1');
+      throw error;
+    });
+    const audited = wrap(target, { actorId: 'tester', configPath: paths.configPath });
+
+    await expect(consume(audited.list(baseConfig))).rejects.toBe(error);
+
+    const events = await readEvents(paths, config);
+    expect(events.map((e) => e.audit_phase)).toEqual(['intent', 'result']);
+    expect(events[1]?.outcome).toBe('handler_error');
+    expect(events[1]?.error_code).toBe('E_LIST');
+    expect(events[1]?.error_message).toBe('list failed');
+  });
+
+  it('rejects anonymous list iteration before calling the saver generator', async () => {
+    const { paths, config } = await initProject();
+    const target = stubSaver();
+    const audited = wrap(target, { configPath: paths.configPath });
+
+    await expect(consume(audited.list(baseConfig))).rejects.toBeInstanceOf(PsyConfigInvalid);
+
+    expect(target.list).not.toHaveBeenCalled();
+    const events = await readEvents(paths, config);
+    expect(events.map((e) => e.audit_phase)).toEqual(['intent', 'result']);
+    expect(events[1]?.outcome).toBe('rejected_by_anonymous_check');
+  });
+
+  it('uses latest checkpoint path when checkpoint_id is omitted', async () => {
+    const { paths, config } = await initProject();
+    const target = stubSaver();
+    const audited = wrap(target, { actorId: 'tester', configPath: paths.configPath });
+    const latestConfig: LangGraphRunnableConfig = {
+      configurable: { thread_id: 't_latest', checkpoint_ns: '' },
+    };
+
+    await audited.get!(latestConfig);
+
+    expect(target.getTuple).toHaveBeenCalledWith(latestConfig);
+    const events = await readEvents(paths, config);
+    expect(events[0]?.operation).toBe('view');
+    expect(events[0]?.memory_path).toBe('langgraph://threads/t_latest/_/latest');
+  });
+
+  it('records zero pending writes as an explicit +0 path suffix', async () => {
+    const { paths, config } = await initProject();
+    const target = stubSaver();
+    const audited = wrap(target, { actorId: 'tester', configPath: paths.configPath });
+
+    await audited.putWrites(baseConfig, [], 'task_empty');
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.operation).toBe('insert');
+    expect(events[0]?.memory_path).toBe('langgraph://threads/t1/_/cp_42/writes/task_empty+0');
   });
 
   it('uses checkpoint_ns when set instead of underscore', async () => {

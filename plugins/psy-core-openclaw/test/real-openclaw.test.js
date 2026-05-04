@@ -68,6 +68,21 @@ test("real OpenClaw hook contract still exposes before/after tool call hooks", (
   assert.match(hookRunner, /runAfterToolCall[\s\S]+runVoidHook\("after_tool_call"/);
 });
 
+test("real OpenClaw hook context still carries attribution and result timing fields", (t) => {
+  const repo = openClawRepo(t);
+  if (!repo) return;
+
+  const hookTypes = readRepoFile(repo, "src/plugins/hook-types.ts");
+  assertSourceContains(hookTypes, [
+    "export type PluginHookToolContext = {",
+    "agentId?: string;",
+    "sessionKey?: string;",
+    "sessionId?: string;",
+    "runId?: string;",
+    "durationMs?: number;",
+  ]);
+});
+
 test("real OpenClaw file-backed memory paths are covered", async (t) => {
   const repo = openClawRepo(t);
   if (!repo) return;
@@ -116,8 +131,8 @@ test("real OpenClaw memory plugin tools are captured", async (t) => {
   if (!repo) return;
 
   assertSourceContains(readRepoFile(repo, "extensions/memory-core/index.ts"), [
-    '{ names: ["memory_search"] }',
-    '{ names: ["memory_get"] }',
+    'names: ["memory_search"]',
+    'names: ["memory_get"]',
   ]);
   assertSourceContains(readRepoFile(repo, "extensions/memory-lancedb/index.ts"), [
     '{ name: "memory_recall" }',
@@ -225,6 +240,26 @@ test("real OpenClaw memory plugin tools are captured", async (t) => {
   assert.equal(lintRecords[1].absolutePath, path.join(wikiVault, "reports", "lint.md"));
 });
 
+test("real OpenClaw memory tool result details remain attributable", (t) => {
+  const repo = openClawRepo(t);
+  if (!repo) return;
+
+  assertSourceContains(readRepoFile(repo, "extensions/memory-lancedb/index.ts"), [
+    'details: { action: "created", id: entry.id }',
+    'details: { action: "deleted", id: memoryId }',
+    'details: { action: "deleted", id: results[0].entry.id }',
+  ]);
+  assertSourceContains(readRepoFile(repo, "extensions/memory-wiki/src/tool.ts"), [
+    "const result = await applyMemoryWikiMutation({ config, mutation });",
+    "text: `${action} ${result.pagePath} via ${result.operation}. ${compileSummary}`",
+    "details: result",
+  ]);
+  assertSourceContains(readRepoFile(repo, "extensions/memory-wiki/src/apply.ts"), [
+    "operation: params.mutation.op",
+    "pagePath: result.pagePath",
+  ]);
+});
+
 test("real OpenClaw skill roots and skill_workshop direct writes are covered", async (t) => {
   const repo = openClawRepo(t);
   if (!repo) return;
@@ -311,4 +346,23 @@ test("real OpenClaw skill roots and skill_workshop direct writes are covered", a
   })[0];
   assert.equal(readRecord.operation, "view");
   assert.equal(readRecord.memoryPath, "/skills/deploy/SKILL.md");
+});
+
+test("real OpenClaw skill_workshop result shapes remain attributable", (t) => {
+  const repo = openClawRepo(t);
+  if (!repo) return;
+
+  assertSourceContains(readRepoFile(repo, "extensions/skill-workshop/src/tool.ts"), [
+    'name: "skill_workshop"',
+    '"write_support_file"',
+    'return jsonResult({ status: "written", filePath });',
+    'return jsonResult({ status: "applied", skillPath: applied.skillPath, proposal: updated });',
+  ]);
+  assertSourceContains(readRepoFile(repo, "docs/plugins/skill-workshop.md"), [
+    "Allowed top-level support directories:",
+    "- `references/`",
+    "- `templates/`",
+    "- `scripts/`",
+    "- `assets/`",
+  ]);
 });

@@ -236,6 +236,57 @@ test("uses result details for concrete OpenClaw memory tool paths", async () => 
   assert.equal(sent[3].memory_path, "/memory-wiki/syntheses/roadmap.md");
 });
 
+test("maps memory tool fallback paths without filesystem classification", () => {
+  const memorySearch = auditRecordsForToolCall({
+    event: { toolName: "memory_search", params: { query: "ship" } },
+  });
+  const wikiSearch = auditRecordsForToolCall({
+    event: { toolName: "memory_search", params: { query: "ship", corpus: "wiki" } },
+  });
+  const wikiGet = auditRecordsForToolCall({
+    event: { toolName: "memory_get", params: { path: "Team/Road Map.md", corpus: "wiki" } },
+  });
+  const memoryCorpusGet = auditRecordsForToolCall({
+    event: { toolName: "wiki_get", params: { lookup: "memory/2026-05-01", corpus: "memory" } },
+  });
+
+  assert.equal(memorySearch[0].memoryPath, "/memories/search");
+  assert.equal(wikiSearch[0].memoryPath, "/memory-wiki/search");
+  assert.equal(wikiGet[0].memoryPath, "/memory-wiki/Team-Road-Map-md");
+  assert.equal(memoryCorpusGet[0].memoryPath, "/memories/get/memory-2026-05-01");
+});
+
+test("prefers memory tool result details over speculative parameters", () => {
+  const forget = auditRecordsForToolCall({
+    event: {
+      toolName: "memory_forget",
+      params: { memoryId: "old-id" },
+      result: { details: { id: "new/id" } },
+    },
+  });
+  const wikiGet = auditRecordsForToolCall({
+    event: {
+      toolName: "wiki_get",
+      params: { lookup: "Team/Roadmap" },
+      result: { details: { path: "entities/Alpha Beta.md" } },
+    },
+  });
+  const wikiApply = auditRecordsForToolCall({
+    event: {
+      toolName: "wiki_apply",
+      params: { op: "create_synthesis", title: "Alpha" },
+      result: { details: { operation: "update_metadata", pagePath: "../entities/Alpha.md" } },
+    },
+  });
+
+  assert.equal(forget[0].memoryPath, "/memory-lancedb/new-id");
+  assert.equal(wikiGet[0].memoryPath, "/memory-wiki/entities/Alpha-Beta.md");
+  assert.deepEqual(
+    wikiApply.map((record) => [record.operation, record.memoryPath]),
+    [["str_replace", "/memory-wiki/unknown/entities/Alpha.md"]],
+  );
+});
+
 test("captures skill_workshop direct workspace skill writes", async () => {
   const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
   const suggest = auditRecordsForToolCall({
@@ -276,6 +327,73 @@ test("captures skill_workshop direct workspace skill writes", async () => {
   assert.equal(support.length, 1);
   assert.equal(support[0].operation, "create");
   assert.equal(support[0].memoryPath, "/skills/gif-workflow/scripts/check.sh");
+});
+
+test("captures skill_workshop suggestions as replacements for existing skills", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+  await fs.mkdir(path.join(workspaceDir, "skills", "qa-workflow"), { recursive: true });
+  await fs.writeFile(path.join(workspaceDir, "skills", "qa-workflow", "SKILL.md"), "old", "utf8");
+
+  const records = auditRecordsForToolCall({
+    event: {
+      toolName: "skill_workshop",
+      params: {
+        action: "suggest",
+        skillName: "qa-workflow",
+        oldText: "old",
+        newText: "new",
+        apply: true,
+      },
+    },
+    ctx: { sessionKey: "agent:main:main" },
+    appConfig: { agents: { defaults: { workspace: workspaceDir } } },
+    env: { HOME: os.homedir() },
+  });
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].operation, "str_replace");
+  assert.equal(records[0].memoryPath, "/skills/qa-workflow/SKILL.md");
+});
+
+test("ignores skill_workshop support-file traversal attempts", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+
+  const records = auditRecordsForToolCall({
+    event: {
+      toolName: "skill_workshop",
+      params: {
+        action: "write_support_file",
+        skillName: "qa-workflow",
+        relativePath: "../secrets.txt",
+        body: "nope",
+      },
+    },
+    ctx: { sessionKey: "agent:main:main" },
+    appConfig: { agents: { defaults: { workspace: workspaceDir } } },
+    env: { HOME: os.homedir() },
+  });
+
+  assert.deepEqual(records, []);
+});
+
+test("captures skill_workshop result filePath for support-file writes", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+  const supportPath = path.join(workspaceDir, "skills", "qa-workflow", "references", "checklist.md");
+
+  const records = auditRecordsForToolCall({
+    event: {
+      toolName: "skill_workshop",
+      params: { action: "write_support_file", skillName: "qa-workflow" },
+      result: { details: { status: "written", filePath: supportPath } },
+    },
+    ctx: { sessionKey: "agent:main:main" },
+    appConfig: { agents: { defaults: { workspace: workspaceDir } } },
+    env: { HOME: os.homedir() },
+  });
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].operation, "create");
+  assert.equal(records[0].memoryPath, "/skills/qa-workflow/references/checklist.md");
 });
 
 test("captures skill_workshop confirmed apply results when pre-call target is not knowable", async () => {
@@ -341,6 +459,171 @@ test("marks result-only skill_workshop apply envelopes as unattributed", async (
   assert.equal(sent[0].operation, "str_replace");
   assert.equal(sent[0].outcome, "unattributed");
   assert.equal(sent[0].memory_path, "/skills/qa-workflow/SKILL.md");
+});
+
+test("builds observer envelopes with identity, purpose, and captured result payloads", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+  const sent = [];
+  const observer = new PsyOpenClawObserver({
+    config: {
+      actorId: "alice@example.com",
+      tenantId: "acme",
+      purpose: "memory-audit",
+      dryRun: false,
+      payloadCapture: true,
+    },
+    ingest: { send: (envelope) => sent.push(envelope) },
+    getAppConfig: () => ({ agents: { defaults: { workspace: workspaceDir } } }),
+    env: { HOME: os.homedir() },
+  });
+  const event = {
+    toolName: "read",
+    toolCallId: "read-1",
+    params: { path: "MEMORY.md" },
+  };
+
+  observer.beforeToolCall(event, { sessionId: "session-1" });
+  observer.afterToolCall(
+    {
+      ...event,
+      durationMs: 42,
+      result: {
+        content: Array.from({ length: 12 }, (_unused, index) => ({
+          type: "text",
+          text: `line ${index}`,
+        })),
+        details: { bytes: 128 },
+      },
+    },
+    { sessionId: "session-1" },
+  );
+
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent[0].identity, {
+    actor_id: "alice@example.com",
+    tenant_id: "acme",
+    session_id: "session-1",
+  });
+  assert.equal(sent[0].purpose, "memory-audit");
+  assert.equal(sent[0].redact_payload, true);
+  assert.equal(sent[0].payload.tool, "read");
+  assert.deepEqual(sent[0].payload.target, {
+    kind: "memory",
+    memoryPath: "/memories/MEMORY.md",
+    relativePath: "MEMORY.md",
+  });
+  assert.equal(sent[1].payload.result.content.length, 10);
+  assert.deepEqual(sent[1].payload.result.details, { bytes: 128 });
+  assert.equal(sent[1].payload.durationMs, 42);
+});
+
+test("marks result envelopes with tool handler errors", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+  const sent = [];
+  const observer = new PsyOpenClawObserver({
+    config: {
+      actorId: "alice",
+      tenantId: null,
+      purpose: null,
+      dryRun: false,
+      payloadCapture: true,
+    },
+    ingest: { send: (envelope) => sent.push(envelope) },
+    getAppConfig: () => ({ agents: { defaults: { workspace: workspaceDir } } }),
+    env: { HOME: os.homedir() },
+  });
+
+  observer.afterToolCall({
+    toolName: "read",
+    toolCallId: "read-error",
+    params: { path: "MEMORY.md" },
+    error: "permission denied",
+  });
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, "result");
+  assert.equal(sent[0].outcome, "handler_error");
+  assert.equal(sent[0].payload.error, "permission denied");
+});
+
+test("deduplicates repeated hook callbacks for the same tool call", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+  const sent = [];
+  const observer = new PsyOpenClawObserver({
+    config: {
+      actorId: "alice",
+      tenantId: null,
+      purpose: null,
+      dryRun: false,
+      payloadCapture: false,
+    },
+    ingest: { send: (envelope) => sent.push(envelope) },
+    getAppConfig: () => ({ agents: { defaults: { workspace: workspaceDir } } }),
+    env: { HOME: os.homedir() },
+  });
+  const event = {
+    toolName: "read",
+    toolCallId: "dupe-1",
+    params: { path: "MEMORY.md" },
+  };
+
+  observer.beforeToolCall(event);
+  observer.beforeToolCall(event);
+  observer.afterToolCall({ ...event, result: "ok" });
+  observer.afterToolCall({ ...event, result: "ok" });
+
+  assert.deepEqual(
+    sent.map((envelope) => [envelope.type, envelope.call_id]),
+    [
+      ["intent", "dupe-1"],
+      ["result", "dupe-1"],
+    ],
+  );
+});
+
+test("suffixes multi-target apply_patch envelope call ids", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-"));
+  const sent = [];
+  const observer = new PsyOpenClawObserver({
+    config: {
+      actorId: "alice",
+      tenantId: null,
+      purpose: null,
+      dryRun: false,
+      payloadCapture: false,
+    },
+    ingest: { send: (envelope) => sent.push(envelope) },
+    getAppConfig: () => ({ agents: { defaults: { workspace: workspaceDir } } }),
+    env: { HOME: os.homedir() },
+  });
+  const patch = [
+    "*** Begin Patch",
+    "*** Add File: memory/2026-05-01.md",
+    "+daily",
+    "*** Update File: skills/demo/SKILL.md",
+    "@@",
+    "-old",
+    "+new",
+    "*** End Patch",
+  ].join("\n");
+  const event = {
+    toolName: "apply_patch",
+    toolCallId: "patch-1",
+    params: { input: patch },
+  };
+
+  observer.beforeToolCall(event);
+  observer.afterToolCall({ ...event, result: "ok" });
+
+  assert.deepEqual(
+    sent.map((envelope) => [envelope.type, envelope.call_id, envelope.operation, envelope.memory_path]),
+    [
+      ["intent", "patch-1:1", "create", "/memories/memory/2026-05-01.md"],
+      ["intent", "patch-1:2", "str_replace", "/skills/demo/SKILL.md"],
+      ["result", "patch-1:1", "create", "/memories/memory/2026-05-01.md"],
+      ["result", "patch-1:2", "str_replace", "/skills/demo/SKILL.md"],
+    ],
+  );
 });
 
 test("observer errors are logged and do not escape into OpenClaw hooks", () => {

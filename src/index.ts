@@ -1,10 +1,15 @@
 import type { MemoryToolHandlers as AnthropicMemoryToolHandlers } from '@anthropic-ai/sdk/helpers/beta/memory';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 import {
   initConfig,
   loadConfig,
+  type ConfigPaths,
   type ConfigOptions,
+  type PsyConfig,
 } from './config.js';
+import { Sealer, defaultSealPaths } from './seal.js';
 import { PsyStore } from './store.js';
 import { verifyStore } from './verify.js';
 import { wrap as wrapInternal } from './adapters/anthropic-memory/wrap.js';
@@ -183,6 +188,7 @@ export interface VerifyOptions extends ConfigOptions {
   dbPath?: string;
   databasePath?: string;
   all?: boolean;
+  seal?: boolean;
 }
 
 export interface ExportOptions extends QueryOptions {
@@ -232,7 +238,7 @@ export async function query(options: QueryOptions = {}): Promise<AuditEvent[]> {
       actor: options.actor,
       tenant: options.tenant,
       session: options.session,
-      operation: normalizeOperation(options.operation),
+      operation: operationVariants(options.operation),
       since: normalizeSince(options.since),
       limit: options.limit,
       offset: options.offset,
@@ -241,9 +247,21 @@ export async function query(options: QueryOptions = {}): Promise<AuditEvent[]> {
 }
 
 export async function verify(options: VerifyOptions = {}): Promise<VerifyResult> {
-  return withStore(options, (store) =>
-    verifyStore(store, { includeArchives: options.all }),
-  );
+  return withStore(options, (store, { config, sqlitePath }) => {
+    const loadedSealer = options.seal === false
+      ? { sealer: null, keyUnavailable: false }
+      : loadSealerForStore(sqlitePath);
+    const result = verifyStore(store, {
+      includeArchives: options.all,
+      sealer: loadedSealer.sealer,
+    });
+
+    if (options.seal !== false) {
+      applySealPolicy(result, config, loadedSealer);
+    }
+
+    return result;
+  });
 }
 
 export async function exportEvents(options: ExportOptions = {}): Promise<AuditEvent[]> {
@@ -252,24 +270,38 @@ export async function exportEvents(options: ExportOptions = {}): Promise<AuditEv
 
 async function withStore<T>(
   options: ConfigOptions & { dbPath?: string; databasePath?: string },
-  callback: (store: PsyStore) => T,
+  callback: (store: PsyStore, context: { config: PsyConfig; paths: ConfigPaths; sqlitePath: string }) => T,
 ): Promise<T> {
   const { config, paths } = await loadConfig(options);
+  const sqlitePath = options.dbPath ?? options.databasePath ?? paths.sqlitePath;
   const store = new PsyStore({
-    sqlitePath: options.dbPath ?? options.databasePath ?? paths.sqlitePath,
+    sqlitePath,
     archivesPath: paths.archivesPath,
     config,
   });
 
   try {
-    return callback(store);
+    return callback(store, { config, paths, sqlitePath });
   } finally {
     store.close();
   }
 }
 
 function normalizeOperation(operation: string | undefined): string | undefined {
-  return operation?.startsWith('memory.') ? operation : operation ? `memory.${operation}` : undefined;
+  return operation?.startsWith('memory.') ? operation.slice('memory.'.length) : operation;
+}
+
+function operationVariants(operation: QueryFilters['operation']): string[] | undefined {
+  if (operation === undefined) return undefined;
+  const variants = new Set<string>();
+  const operations = Array.isArray(operation) ? operation : [operation];
+  for (const value of operations) {
+    const normalized = normalizeOperation(value);
+    if (normalized === undefined) continue;
+    variants.add(normalized);
+    variants.add(`memory.${normalized}`);
+  }
+  return variants.size === 0 ? undefined : Array.from(variants);
 }
 
 function normalizeSince(value: QueryFilters['since']): Date | undefined {
@@ -277,4 +309,57 @@ function normalizeSince(value: QueryFilters['since']): Date | undefined {
     return value;
   }
   return new Date(value);
+}
+
+interface LoadedSealer {
+  sealer: Sealer | null;
+  keyUnavailable: boolean;
+}
+
+function loadSealerForStore(sqlitePath: string): LoadedSealer {
+  if (!sqlitePath || sqlitePath === ':memory:') return { sealer: null, keyUnavailable: false };
+  const sealPaths = sealPathsForStore(sqlitePath);
+  try {
+    return {
+      sealer: Sealer.load({
+        ...sealPaths,
+        envKey: process.env.PSY_SEAL_KEY,
+      }),
+      keyUnavailable: false,
+    };
+  } catch {
+    return { sealer: null, keyUnavailable: existsSync(sealPaths.headPath) };
+  }
+}
+
+function sealPathsForStore(sqlitePath: string) {
+  const defaults = defaultSealPaths(sqlitePath);
+  return {
+    headPath: process.env.PSY_HEAD_PATH ? path.resolve(process.env.PSY_HEAD_PATH) : defaults.headPath,
+    keyPath: process.env.PSY_SEAL_KEY_PATH ? path.resolve(process.env.PSY_SEAL_KEY_PATH) : defaults.keyPath,
+  };
+}
+
+function applySealPolicy(result: VerifyResult, config: PsyConfig, loaded: LoadedSealer): void {
+  if (config.seal === 'required' && !loaded.sealer && !loaded.keyUnavailable) {
+    result.issues.push({
+      seq: null,
+      event_id: null,
+      operation_id: null,
+      code: 'seal_missing_required',
+      message: 'Config marks seal as required but no head pointer was found. Possible downgrade attack. Run `psy init --migrate` to re-seal the current tail (and investigate why .psy/head.json was removed).',
+    });
+    result.ok = false;
+  }
+
+  if (loaded.keyUnavailable) {
+    result.issues.push({
+      seq: null,
+      event_id: null,
+      operation_id: null,
+      code: 'seal_key_unavailable',
+      message: 'Head pointer exists but seal key cannot be read. Set PSY_SEAL_KEY or check .psy/seal-key permissions, or pass seal: false to skip explicitly.',
+    });
+    result.ok = false;
+  }
 }

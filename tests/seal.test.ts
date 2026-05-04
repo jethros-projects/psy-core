@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
@@ -23,6 +25,63 @@ function makeHandlers() {
     delete: async () => 'delete-result',
     rename: async () => 'rename-result',
   };
+}
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+interface SealRaceWorkerResult {
+  keyCreated: boolean;
+  keyHex: string;
+  diskKey: string;
+}
+
+function runSealRaceWorker(preloadPath: string, keyPath: string, headPath: string): Promise<SealRaceWorkerResult> {
+  const workerScript = `
+import { readFileSync } from "node:fs";
+import { Sealer } from "./src/seal.ts";
+
+const [keyPath, headPath] = process.argv.slice(1);
+const result = Sealer.bootstrap({ keyPath, headPath });
+console.log(JSON.stringify({
+  keyCreated: result.keyCreated,
+  keyHex: result.sealer.key.toString("hex"),
+  diskKey: readFileSync(keyPath, "utf8").trim()
+}));
+`;
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ['--import', pathToFileURL(preloadPath).href, '--import', 'tsx', '--input-type=module', '-e', workerScript, keyPath, headPath],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, PSY_RACE_KEY_PATH: keyPath, PSY_SEAL_KEY: '' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`seal race worker exited ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+        return;
+      }
+      try {
+        const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+        resolve(JSON.parse(lines[lines.length - 1]) as SealRaceWorkerResult);
+      } catch (error) {
+        reject(new Error(`seal race worker did not emit JSON\nstdout:\n${stdout}\nstderr:\n${stderr}\nerror:${String(error)}`));
+      }
+    });
+  });
 }
 
 beforeEach(clearSealEnv);
@@ -67,6 +126,45 @@ describe('Sealer.bootstrap', () => {
     expect(first.keyCreated).toBe(true);
     expect(second.keyCreated).toBe(false);
     expect(secondKeyHex).toBe(firstKeyHex);
+  });
+
+  it('re-reads the on-disk key when concurrent bootstraps race to create it', async () => {
+    const { paths } = await initProject();
+    const sealPaths = defaultSealPaths(paths.sqlitePath);
+    const preloadPath = path.join(path.dirname(sealPaths.keyPath), 'hide-first-key-exists.mjs');
+    writeFileSync(
+      preloadPath,
+      `
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+
+const keyPath = process.env.PSY_RACE_KEY_PATH;
+const originalExistsSync = fs.existsSync.bind(fs);
+let hidKeyPath = false;
+
+fs.existsSync = function existsSyncOnce(pathLike) {
+  const actualPath = typeof pathLike === "string" ? pathLike : pathLike?.toString?.();
+  if (keyPath && actualPath === keyPath && !hidKeyPath) {
+    hidKeyPath = true;
+    return false;
+  }
+  return originalExistsSync(pathLike);
+};
+
+syncBuiltinESMExports();
+`,
+    );
+
+    const results = await Promise.all(
+      Array.from({ length: 6 }, (_unused, index) =>
+        runSealRaceWorker(preloadPath, sealPaths.keyPath, path.join(path.dirname(sealPaths.headPath), `head-${index}.json`)),
+      ),
+    );
+    const diskKey = readFileSync(sealPaths.keyPath, 'utf8').trim();
+
+    expect(results.filter((result) => result.keyCreated)).toHaveLength(1);
+    expect(results.map((result) => result.diskKey)).toEqual(Array(results.length).fill(diskKey));
+    expect(new Set(results.map((result) => result.keyHex))).toEqual(new Set([diskKey]));
   });
 
   it('uses PSY_SEAL_KEY env var when set, never persisting to disk', async () => {

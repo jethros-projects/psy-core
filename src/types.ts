@@ -190,7 +190,7 @@ export interface QueryFilters {
   actor?: string;
   tenant?: string;
   session?: string;
-  operation?: string;
+  operation?: string | string[];
   since?: Date;
   limit?: number;
   offset?: number;

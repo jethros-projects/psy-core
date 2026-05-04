@@ -47,6 +47,18 @@ def test_init_is_idempotent(tmp_path: Path) -> None:
     assert "psy" in contents["plugins"]["enabled"]
 
 
+def test_init_can_enable_anonymous_mode_without_actor(tmp_path: Path) -> None:
+    yaml = _yaml()
+    cfg = tmp_path / "config.yaml"
+    rc = main(["init", "--allow-anonymous", "--config", str(cfg)])
+    assert rc == 0
+    contents = yaml.safe_load(cfg.read_text())
+    psy = contents["plugins"]["psy"]
+    assert "psy" in contents["plugins"]["enabled"]
+    assert psy["allow_anonymous"] is True
+    assert "actor_id" not in psy
+
+
 def test_install_skill_writes_trust_layer_skill(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -59,6 +71,23 @@ def test_install_skill_writes_trust_layer_skill(
     assert "psy-core-trust-layer" in skill_path.read_text(encoding="utf-8")
     assert "Hermes's magic is that it learns" in skill_path.read_text(encoding="utf-8")
     assert str(skill_path) in capsys.readouterr().out
+
+
+def test_install_skill_backs_up_existing_different_skill(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    skill_path = tmp_path / "skills" / "devops" / "psy-core-trust-layer" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text("local draft", encoding="utf-8")
+
+    rc = main(["install-skill", "--path", str(skill_path)])
+
+    assert rc == 0
+    assert "psy-core Trust Layer for Hermes" in skill_path.read_text(encoding="utf-8")
+    backup = skill_path.with_name("SKILL.md.bak")
+    assert backup.read_text(encoding="utf-8") == "local draft"
+    assert str(backup) in capsys.readouterr().out
 
 
 def test_install_skill_default_path_honors_hermes_home(

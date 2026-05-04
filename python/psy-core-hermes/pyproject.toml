@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "psy-core-hermes"
-version = "0.1.3"
+version = "0.1.4"
 description = "Tamper-evident memory audit log for Hermes Agent. Hash-chained, HMAC-sealed. Plain plugin observer that forwards every memory mutation to the psy-core audit chain."
 readme = "README.md"
 license = { text = "MIT" }

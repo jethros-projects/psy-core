@@ -1,6 +1,6 @@
 {
   "name": "psy-core",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Tamper-evident audit log for AI agent memory operations. Adapters for Anthropic Memory, Letta, Mastra, Mem0, LangChain, LangGraph, GBrain, and Hermes Agent (via psy-core-hermes).",
   "type": "module",
   "license": "MIT",
@@ -90,9 +90,12 @@
     "test:gbrain": "vitest run tests/gbrain-wrap.test.ts tests/gbrain-real.test.ts",
     "test:gbrain:live": "bash scripts/gbrain-live.sh",
     "test:gbrain:live:ops": "bun run scripts/gbrain-live-operations.ts",
+    "test:e2e:adapters": "npm run build && vitest run --config vitest.e2e.config.ts tests/e2e/ts-adapters-shared-chain.e2e.ts",
+    "test:e2e:integrations": "bash scripts/integration-e2e.sh",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "verify": "npm run typecheck && npm test && npm run build",
+    "verify:e2e": "npm run verify && npm run test:e2e:integrations",
     "prepack": "npm run build"
   },
   "engines": {

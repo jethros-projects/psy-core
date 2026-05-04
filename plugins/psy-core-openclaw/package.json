@@ -1,6 +1,6 @@
 {
   "name": "psy-core-openclaw",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenClaw plugin that audits memory and skill access into a psy-core tamper-evident chain.",
   "type": "module",
   "license": "MIT",
@@ -33,7 +33,7 @@
       "./src/index.js"
     ],
     "install": {
-      "npmSpec": "psy-core-openclaw@0.1.0",
+      "npmSpec": "psy-core-openclaw@0.1.1",
       "localPath": "plugins/psy-core-openclaw",
       "defaultChoice": "local",
       "minHostVersion": ">=2026.4.29"
@@ -60,7 +60,9 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node test/run-openclaw-gateway-e2e.mjs",
+    "test:all": "npm test && npm run test:e2e"
   },
   "engines": {
     "node": ">=22.14"

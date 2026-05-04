@@ -6,11 +6,13 @@ import logging
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 from psy_core.hermes.config import PsyHermesConfig
 from psy_core.hermes.hooks import HookHandlers, make_hook_handlers
+from psy_core.hermes.ingest_client import IngestClient
 
 
 class FakeIngestClient:
@@ -21,12 +23,16 @@ class FakeIngestClient:
     """
 
     def __init__(self) -> None:
-        self.sent: list[dict] = []
+        self.sent: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self.degraded = False
-        self.handshake = {"ok": True, "version": "test", "schema_version": "1.0.0"}
+        self.handshake: dict[str, Any] = {
+            "ok": True,
+            "version": "test",
+            "schema_version": "1.0.0",
+        }
 
-    def send(self, envelope: dict) -> bool:
+    def send(self, envelope: dict[str, Any]) -> bool:
         with self._lock:
             self.sent.append(envelope)
         return True
@@ -58,7 +64,7 @@ def hooks(
     fake_ingest: FakeIngestClient,
 ) -> Iterator[HookHandlers]:
     # Cast: the fake duck-types IngestClient for the small surface hooks use.
-    handlers = make_hook_handlers(base_config, fake_ingest, redactor=None)  # type: ignore[arg-type]
+    handlers = make_hook_handlers(base_config, cast(IngestClient, fake_ingest), redactor=None)
     yield handlers
 
 

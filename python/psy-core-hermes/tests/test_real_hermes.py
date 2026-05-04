@@ -467,7 +467,7 @@ def test_identity_propagates_actor_tenant_session(hermes_home: Path) -> None:
         tool_call_id="id-1",
         session_id="ticket-12345",
     )
-    env = handlers.ingest.sent[0]  # type: ignore[attr-defined]
+    env = handlers.ingest.sent[0]
     assert env["identity"] == {
         "actor_id": "alice@acme.com",
         "tenant_id": "acme",
@@ -488,9 +488,66 @@ def test_identity_session_id_omitted_when_unknown(hermes_home: Path) -> None:
         tool_call_id="no-sess",
         # session_id deliberately omitted
     )
-    env = handlers.ingest.sent[0]  # type: ignore[attr-defined]
+    env = handlers.ingest.sent[0]
     assert env["identity"]["actor_id"] == "alice"
     assert "session_id" not in env["identity"]
+
+
+def test_real_discovery_uses_trimmed_config_identity(hermes_home: Path) -> None:
+    _write_config(
+        hermes_home,
+        {
+            "actor_id": "  alice@acme.com  ",
+            "tenant_id": "  acme  ",
+            "purpose": "  support  ",
+            "psy_binary": "/bin/echo",
+        },
+    )
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="memory",
+        args={"action": "add", "target": "memory", "content": "x"},
+        tool_call_id="trimmed",
+        session_id="s1",
+    )
+
+    env = handlers.ingest.sent[0]  # type: ignore[attr-defined]
+    assert env["identity"] == {
+        "actor_id": "alice@acme.com",
+        "tenant_id": "acme",
+        "session_id": "s1",
+    }
+    assert env["purpose"] == "support"
+
+
+def test_real_payload_capture_false_omits_payload(hermes_home: Path) -> None:
+    _write_config(
+        hermes_home,
+        {
+            "actor_id": "alice",
+            "psy_binary": "/bin/echo",
+            "payload_capture": False,
+        },
+    )
+    mgr = _fresh_manager()
+    handlers = _load_psy_into(mgr)
+    assert handlers is not None
+
+    mgr.invoke_hook(
+        "pre_tool_call",
+        tool_name="memory",
+        args={"action": "add", "target": "user", "content": "secret"},
+        tool_call_id="no-payload",
+        session_id="s1",
+    )
+
+    env = handlers.ingest.sent[0]  # type: ignore[attr-defined]
+    assert env["call_id"] == "no-payload"
+    assert "payload" not in env
 
 
 # ---------------------------------------------------------------------------
@@ -1001,7 +1058,7 @@ def test_documented_uncapturable_surfaces_have_no_hook(hermes_home: Path) -> Non
         )
 
 
-def handlers_for_documented_surfaces(hermes_home: Path):
+def handlers_for_documented_surfaces(hermes_home: Path) -> Any:
     """Build handlers via the real registration path; helper for the
     boundary test above."""
     _write_config(hermes_home, {"actor_id": "alice", "psy_binary": "/bin/echo"})

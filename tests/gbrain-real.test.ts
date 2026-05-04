@@ -29,7 +29,8 @@ async function importFromRepo<T>(relative: string): Promise<T> {
   return import(url) as Promise<T>;
 }
 
-describe.skipIf(!realRepo)('gbrain adapter against a real GBrain PGLite engine', () => {
+if (realRepo) {
+describe('gbrain adapter against a real GBrain PGLite engine', () => {
   beforeAll(async () => {
     const { createEngine } = await importFromRepo<{
       createEngine(config: { engine: 'pglite' }): Promise<RealHarness['engine']>;
@@ -144,9 +145,10 @@ describe.skipIf(!realRepo)('gbrain adapter against a real GBrain PGLite engine',
     }
   }, 60_000);
 });
-
-describe.skipIf(Boolean(realRepo))('gbrain real integration opt-in guard', () => {
+} else {
+describe('gbrain real integration opt-in guard', () => {
   it('skips real GBrain integration unless PSY_GBRAIN_REAL_REPO is set', () => {
     expect(realRepo).toBeUndefined();
   });
 });
+}

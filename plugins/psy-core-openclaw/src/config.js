@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 
-export const DEFAULT_PSY_CORE_VERSION = "0.5.0";
+export const DEFAULT_PSY_CORE_VERSION = "0.5.1";
 export const DEFAULT_PLUGIN_ID = "psy-core";
 export const DEFAULT_AGENT_ID = "main";
 

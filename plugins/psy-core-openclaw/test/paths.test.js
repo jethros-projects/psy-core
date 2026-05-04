@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { classifyTargetPath } from "../src/paths.js";
 
@@ -59,5 +60,67 @@ test("classifies workspace and shared skill roots", () => {
       appConfig: { skills: { load: { extraDirs: ["/opt/openclaw-extra"] } } },
     })?.memoryPath,
     "/extra-skills/reporting/SKILL.md",
+  );
+});
+
+test("normalizes OpenClaw tool path syntaxes before classification", () => {
+  const env = { HOME: "/home/alice" };
+  const workspaceDir = "/home/alice/.openclaw/workspace";
+  const skillPath = path.join(workspaceDir, "skills", "demo", "SKILL.md");
+
+  assert.equal(
+    classifyTargetPath("@MEMORY.md", { workspaceDir, env })?.memoryPath,
+    "/memories/MEMORY.md",
+  );
+  assert.equal(
+    classifyTargetPath(pathToFileURL(skillPath).href, { workspaceDir, env })?.memoryPath,
+    "/skills/demo/SKILL.md",
+  );
+  assert.equal(
+    classifyTargetPath("~/.openclaw/skills/shared/SKILL.md", { workspaceDir, env })?.memoryPath,
+    "/managed-skills/shared/SKILL.md",
+  );
+});
+
+test("does not classify sibling prefixes or root containers", () => {
+  const env = { HOME: "/home/alice" };
+  const workspaceDir = "/home/alice/.openclaw/workspace";
+  const appConfig = { skills: { load: { extraDirs: ["/opt/openclaw-extra"] } } };
+
+  assert.equal(
+    classifyTargetPath("/home/alice/.openclaw/workspace-old/MEMORY.md", {
+      workspaceDir,
+      env,
+      appConfig,
+    }),
+    null,
+  );
+  assert.equal(classifyTargetPath("memory", { workspaceDir, env, appConfig }), null);
+  assert.equal(classifyTargetPath("skills", { workspaceDir, env, appConfig }), null);
+  assert.equal(
+    classifyTargetPath("/home/alice/.openclaw/skills-old/demo/SKILL.md", {
+      workspaceDir,
+      env,
+      appConfig,
+    }),
+    null,
+  );
+  assert.equal(
+    classifyTargetPath("/opt/openclaw-extra-old/reporting/SKILL.md", {
+      workspaceDir,
+      env,
+      appConfig,
+    }),
+    null,
+  );
+});
+
+test("rejects malformed file URLs instead of guessing a target", () => {
+  assert.equal(
+    classifyTargetPath("file:///%00", {
+      workspaceDir: "/home/alice/.openclaw/workspace",
+      env: { HOME: "/home/alice" },
+    }),
+    null,
   );
 });

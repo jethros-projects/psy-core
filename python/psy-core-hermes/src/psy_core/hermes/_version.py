@@ -9,12 +9,12 @@ TypeScript ingest binary.
 from __future__ import annotations
 
 #: This package's version (must match pyproject.toml).
-PSY_CORE_HERMES_VERSION: str = "0.1.3"
+PSY_CORE_HERMES_VERSION: str = "0.1.4"
 
 #: The exact psy-core JS version this release pins. The npx fallback runs
 #: `npx -y psy-core@<PSY_CORE_VERSION> psy ingest`. The cross-lang-e2e CI
 #: workflow asserts that this pin still ingests cleanly end-to-end.
-PSY_CORE_VERSION: str = "0.5.0"
+PSY_CORE_VERSION: str = "0.5.1"
 
 #: The on-disk audit schema version this release was tested against. Used
 #: as the default for `schema_version_pin`; if the subprocess handshake

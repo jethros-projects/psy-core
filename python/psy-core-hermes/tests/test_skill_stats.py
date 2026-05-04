@@ -194,6 +194,46 @@ def test_one_create_no_patches_is_ok(tmp_path: Path) -> None:
     assert m.status == "ok"
 
 
+def test_actor_and_session_counts_are_distinct(tmp_path: Path) -> None:
+    db = tmp_path / "audit.db"
+    _seed_db(
+        db,
+        [
+            {
+                "operation": "create",
+                "memory_path": "/skills/shared/SKILL.md",
+                "timestamp": _ts(0),
+                "actor_id": "alice",
+                "session_id": "s1",
+            },
+            {
+                "operation": "str_replace",
+                "memory_path": "/skills/shared/SKILL.md",
+                "timestamp": _ts(1),
+                "actor_id": "alice",
+                "session_id": "s1",
+            },
+            {
+                "operation": "str_replace",
+                "memory_path": "/skills/shared/SKILL.md",
+                "timestamp": _ts(2),
+                "actor_id": "bob",
+                "session_id": "s2",
+            },
+            {
+                "operation": "delete",
+                "memory_path": "/skills/shared/SKILL.md",
+                "timestamp": _ts(60 * 48),
+                "actor_id": None,
+                "session_id": None,
+            },
+        ],
+    )
+    [m] = compute_skill_stats(db)
+    assert m.actor_count == 2
+    assert m.session_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Churn ratio
 # ---------------------------------------------------------------------------
@@ -342,6 +382,30 @@ def test_long_lived_skill_not_short_lived(tmp_path: Path) -> None:
     assert m.short_lived is False
 
 
+def test_delete_before_create_is_not_short_lived(tmp_path: Path) -> None:
+    db = tmp_path / "audit.db"
+    _seed_db(
+        db,
+        [
+            {
+                "operation": "delete",
+                "memory_path": "/skills/recreated/SKILL.md",
+                "timestamp": _ts(0),
+                "actor_id": "alice",
+            },
+            {
+                "operation": "create",
+                "memory_path": "/skills/recreated/SKILL.md",
+                "timestamp": _ts(10),
+                "actor_id": "alice",
+            },
+        ],
+    )
+    [m] = compute_skill_stats(db)
+    assert m.short_lived is False
+    assert m.status == "ok"
+
+
 # ---------------------------------------------------------------------------
 # Multi-skill: stable grouping + sorting
 # ---------------------------------------------------------------------------
@@ -377,6 +441,22 @@ def test_multiple_skills_grouped_by_name(tmp_path: Path) -> None:
     by_name = {m.skill_name: m for m in metrics}
     assert by_name["aaa"].patch_count == 0
     assert by_name["bbb"].patch_count == 1
+
+
+def test_malformed_skill_path_is_ignored(tmp_path: Path) -> None:
+    db = tmp_path / "audit.db"
+    _seed_db(
+        db,
+        [
+            {
+                "operation": "create",
+                "memory_path": "/skills//SKILL.md",
+                "timestamp": _ts(0),
+                "actor_id": "alice",
+            }
+        ],
+    )
+    assert compute_skill_stats(db) == []
 
 
 # ---------------------------------------------------------------------------

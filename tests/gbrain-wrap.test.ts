@@ -127,6 +127,85 @@ describe('gbrain operations wrap', () => {
     expect(events[6]?.memory_path).not.toContain('sensitive');
   });
 
+  it('preserves operation handler return values and this binding', async () => {
+    const { paths, config } = await initProject();
+    const expected = { ok: true, rows: [{ slug: 'people/alice' }] };
+    let seenThis: unknown;
+    const handler = vi.fn(async function (this: GBrainOperation) {
+      seenThis = this;
+      return expected;
+    });
+    const [wrapped] = wrapOperations([operation('put_page', handler)], {
+      actorId: 'tester',
+      configPath: paths.configPath,
+    });
+
+    const result = await wrapped.handler({ brainId: 'host' }, { slug: 'people/alice' });
+
+    expect(result).toBe(expected);
+    expect(seenThis).toMatchObject({ name: 'put_page' });
+    const events = await readEvents(paths, config);
+    const payload = events[1]?.payload_preview ? JSON.parse(events[1].payload_preview) : null;
+    expect(payload?.__psy_audit?.result).toEqual({ kind: 'unknown' });
+  });
+
+  it('prefers subagent identity over job identity for operation sessions', async () => {
+    const { paths, config } = await initProject();
+    const [wrapped] = wrapOperations([operation('get_page', undefined, { scope: 'read', mutating: false })], {
+      configPath: paths.configPath,
+    });
+
+    await wrapped.handler(
+      {
+        auth: { clientId: 'oauth-client' },
+        brainId: 'host',
+        subagentId: 7,
+        jobId: 12,
+      },
+      { slug: 'people/alice' },
+    );
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.actor_id).toBe('oauth-client');
+    expect(events[0]?.session_id).toBe('gbrain-subagent:7');
+  });
+
+  it('uses the configured brainId when an operation context omits one', async () => {
+    const { paths, config } = await initProject();
+    const [wrapped] = wrapOperations([operation('get_page', undefined, { scope: 'read', mutating: false })], {
+      actorId: 'tester',
+      brainId: 'configured-brain',
+      configPath: paths.configPath,
+    });
+
+    await wrapped.handler({}, { slug: 'people/alice' });
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe('gbrain://brains/configured-brain/pages/people/alice');
+  });
+
+  it('encodes operation path segments and defaults blank link_type to link', async () => {
+    const { paths, config } = await initProject();
+    const [wrapped] = wrapOperations([operation('add_link')], {
+      actorId: 'tester',
+      configPath: paths.configPath,
+    });
+
+    await wrapped.handler(
+      { brainId: 'brain space' },
+      {
+        from: '/people/Alice Smith/',
+        to: 'companies/Acme & Sons',
+        link_type: '',
+      },
+    );
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe(
+      'gbrain://brains/brain%20space/links/people/Alice%20Smith/link/companies/Acme%20%26%20Sons',
+    );
+  });
+
   it('can skip read auditing without requiring identity', async () => {
     const { paths, config } = await initProject();
     const getPage = operation('get_page');
@@ -144,18 +223,20 @@ describe('gbrain operations wrap', () => {
 
   it('records operation handler errors and rethrows', async () => {
     const { paths, config } = await initProject();
+    const error = Object.assign(new Error('gbrain write failed'), { code: 'E_GBRAIN_WRITE' });
     const boom = operation('put_page', vi.fn(async () => {
-      throw new Error('gbrain write failed');
+      throw error;
     }));
     const [wrapped] = wrapOperations([boom], {
       actorId: 'tester',
       configPath: paths.configPath,
     });
 
-    await expect(wrapped.handler({}, { slug: 'people/alice' })).rejects.toThrow('gbrain write failed');
+    await expect(wrapped.handler({}, { slug: 'people/alice' })).rejects.toBe(error);
 
     const events = await readEvents(paths, config);
     expect(events.at(-1)?.outcome).toBe('handler_error');
+    expect(events.at(-1)?.error_code).toBe('E_GBRAIN_WRITE');
     expect(events.at(-1)?.error_message).toBe('gbrain write failed');
   });
 
@@ -313,6 +394,39 @@ describe('gbrain engine wrap', () => {
     expect(events[4]?.memory_path).toBe('gbrain://brains/host/links/people/alice/works_at/companies/acme');
   });
 
+  it('preserves exact engine method results', async () => {
+    const { paths, config } = await initProject();
+    const { engine } = stubEngine();
+    const expected = { slug: 'people/exact', title: 'Exact Page' };
+    engine.getPage.mockResolvedValueOnce(expected);
+    const audited = wrapEngine(engine as unknown as GBrainEngine, {
+      actorId: 'tester',
+      brainId: 'host',
+      configPath: paths.configPath,
+    }) as unknown as typeof engine;
+
+    const result = await audited.getPage('people/exact');
+
+    expect(result).toBe(expected);
+    const events = await readEvents(paths, config);
+    const payload = events[1]?.payload_preview ? JSON.parse(events[1].payload_preview) : null;
+    expect(payload?.__psy_audit?.result).toEqual({ kind: 'unknown' });
+  });
+
+  it('can skip engine read auditing without requiring identity', async () => {
+    const { paths, config } = await initProject();
+    const { engine } = stubEngine();
+    const audited = wrapEngine(engine as unknown as GBrainEngine, {
+      auditReads: false,
+      configPath: paths.configPath,
+    }) as unknown as typeof engine;
+
+    await audited.getPage('people/alice');
+
+    expect(engine.getPage).toHaveBeenCalledOnce();
+    expect(await readEvents(paths, config)).toHaveLength(0);
+  });
+
   it('wraps transaction callback engines so inner writes are audited', async () => {
     const { paths, config } = await initProject();
     const { engine, tx } = stubEngine();
@@ -351,7 +465,10 @@ describe('gbrain engine wrap', () => {
     expect(events[0]?.operation).toBe('rename');
     expect(events[0]?.memory_path).toBe('gbrain://brains/host/pages/people/alice-old');
     const payload = events[0]?.payload_preview ? JSON.parse(events[0].payload_preview) : null;
-    expect(payload).toBeNull();
+    expect(payload?.__psy_audit?.paths).toEqual({
+      old_path: 'gbrain://brains/host/pages/people/alice-old',
+      new_path: 'gbrain://brains/host/pages/people/alice',
+    });
   });
 
   it('rejects anonymous engine calls before invoking the method', async () => {
@@ -490,7 +607,8 @@ describe('gbrain engine wrap', () => {
   it('records engine method errors and rethrows', async () => {
     const { paths, config } = await initProject();
     const { engine } = stubEngine();
-    engine.addLink.mockRejectedValueOnce(new Error('link failed'));
+    const error = Object.assign(new Error('link failed'), { code: 'E_LINK' });
+    engine.addLink.mockRejectedValueOnce(error);
     const audited = wrapEngine(engine as unknown as GBrainEngine, {
       actorId: 'tester',
       configPath: paths.configPath,
@@ -498,10 +616,11 @@ describe('gbrain engine wrap', () => {
 
     await expect(
       audited.addLink('people/alice', 'companies/acme'),
-    ).rejects.toThrow('link failed');
+    ).rejects.toBe(error);
 
     const events = await readEvents(paths, config);
     expect(events.at(-1)?.outcome).toBe('handler_error');
+    expect(events.at(-1)?.error_code).toBe('E_LINK');
     expect(events.at(-1)?.error_message).toBe('link failed');
   });
 });

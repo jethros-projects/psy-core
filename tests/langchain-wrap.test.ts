@@ -94,6 +94,65 @@ describe('langchain wrap', () => {
     expect(target.unwrappedHelper).toHaveBeenCalledOnce();
   });
 
+  it('binds pass-through methods to the original history object', async () => {
+    const { paths } = await initProject();
+    const target = stubHistory();
+    const checkThis = vi.fn(function (this: unknown) {
+      return this;
+    });
+    (target as unknown as { checkThis: typeof checkThis }).checkThis = checkThis;
+    const audited = wrap(target, { actorId: 'tester', sessionId: 's1', configPath: paths.configPath });
+
+    const result = (audited as unknown as { checkThis: () => unknown }).checkThis();
+
+    expect(result).toBe(target);
+    expect(checkThis).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the exact getMessages array returned by the backend', async () => {
+    const { paths, config } = await initProject();
+    const target = stubHistory();
+    const expected = [message('persisted', 'system')];
+    target.getMessages.mockResolvedValueOnce(expected);
+    const audited = wrap(target, { actorId: 'tester', sessionId: 's1', configPath: paths.configPath });
+
+    const result = await audited.getMessages();
+
+    expect(result).toBe(expected);
+    const events = await readEvents(paths, config);
+    const payload = events[1]?.payload_preview ? JSON.parse(events[1].payload_preview) : null;
+    expect(payload?.__psy_audit?.result).toEqual({ kind: 'unknown' });
+  });
+
+  it('keeps the local message counter monotonic across clear', async () => {
+    const { paths, config } = await initProject();
+    const target = stubHistory();
+    const audited = wrap(target, { actorId: 'tester', sessionId: 's1', configPath: paths.configPath });
+
+    await audited.addMessage(message('before clear'));
+    await audited.clear();
+    await audited.addMessage(message('after clear'));
+
+    const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
+    expect(intents.map((e) => e.memory_path)).toEqual([
+      'langchain://sessions/s1/messages/1',
+      'langchain://sessions/s1/messages',
+      'langchain://sessions/s1/messages/2',
+    ]);
+  });
+
+  it('does not advance the message counter for an empty bulk append', async () => {
+    const { paths, config } = await initProject();
+    const target = stubHistory();
+    const audited = wrap(target, { actorId: 'tester', sessionId: 's1', configPath: paths.configPath });
+
+    await audited.addMessages([]);
+    await audited.addMessage(message('first actual message'));
+
+    const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
+    expect(intents[1]?.memory_path).toBe('langchain://sessions/s1/messages/1');
+  });
+
   it('promotes the LangChain sessionId to the audit Identity.sessionId field', async () => {
     // LangChain's per-conversation `sessionId` option maps naturally onto
     // psy's `Identity.sessionId`, so a wrap with only a sessionId (no
@@ -116,13 +175,15 @@ describe('langchain wrap', () => {
   it('records handler error and rethrows', async () => {
     const { paths, config } = await initProject();
     const target = stubHistory();
-    target.clear.mockRejectedValueOnce(new Error('store offline'));
+    const error = Object.assign(new Error('store offline'), { code: 'E_HISTORY' });
+    target.clear.mockRejectedValueOnce(error);
     const audited = wrap(target, { actorId: 't', sessionId: 's1', configPath: paths.configPath });
 
-    await expect(audited.clear()).rejects.toThrow('store offline');
+    await expect(audited.clear()).rejects.toBe(error);
 
     const events = await readEvents(paths, config);
     expect(events.at(-1)?.outcome).toBe('handler_error');
+    expect(events.at(-1)?.error_code).toBe('E_HISTORY');
   });
 
   it('uses identity from runWithContext', async () => {

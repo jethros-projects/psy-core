@@ -161,7 +161,7 @@ plugins:
     db_path: ~/.hermes/psy/audit.db
     seal_key_path: ~/.hermes/psy/seal-key
     memories_dir: ~/.hermes/memories
-    psy_core_version: 0.5.0
+    psy_core_version: 0.5.1
 ```
 
 The command also writes:
@@ -183,7 +183,7 @@ At runtime, the plugin starts the audit writer using this order:
 
 1. Use `psy_binary` if configured.
 2. Else use `psy` if it is on `PATH`.
-3. Else use `npx -y psy-core@0.5.0 psy ingest`.
+3. Else use `npx -y psy-core@0.5.1 psy ingest`.
 4. Else fail with an install diagnostic.
 
 Most users only need `pip install psy-core-hermes`. Installing `psy-core` globally avoids the `npx` fallback:
@@ -216,7 +216,7 @@ plugins:
     memories_dir: ~/.hermes/memories
 
     # Ingest subprocess
-    psy_core_version: 0.5.0
+    psy_core_version: 0.5.1
     psy_binary: null
     schema_version_pin: "1.0.0"
 
@@ -319,9 +319,9 @@ The stats path opens SQLite read-only.
 
 ## Versioning and Compatibility
 
-This package version: `psy-core-hermes 0.1.3`
+This package version: `psy-core-hermes 0.1.4`
 
-Pinned Node audit engine: `psy-core 0.5.0`
+Pinned Node audit engine: `psy-core 0.5.1`
 
 Audit schema: `1.0.0`
 

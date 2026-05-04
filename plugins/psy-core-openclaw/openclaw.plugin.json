@@ -51,7 +51,7 @@
       },
       "psyCoreVersion": {
         "type": "string",
-        "default": "0.5.0",
+        "default": "0.5.1",
         "description": "Deprecated compatibility field. The plugin writes audit records in-process and does not use npx."
       },
       "psy_core_version": {
