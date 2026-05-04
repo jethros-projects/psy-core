@@ -403,7 +403,7 @@ class IngestClient:
                 if not ack.get("ok"):
                     self._log.warning("ingest rejected envelope: %s", ack)
                 self._consecutive_failures = 0
-            except (BrokenPipeError, OSError, TimeoutError, json.JSONDecodeError) as exc:
+            except (BrokenPipeError, OSError, ValueError, TimeoutError, json.JSONDecodeError) as exc:
                 if self._closed:
                     break
                 self._record_failure(f"writer error: {exc}")
