@@ -192,9 +192,9 @@ describe('appendFromEnvelope', () => {
 
 describe('ingestStartupLine', () => {
   it('emits a single newline-terminated handshake line', () => {
-    const line = ingestStartupLine('0.4.0', '1.0.0');
+    const line = ingestStartupLine('0.5.0', '1.0.0');
     expect(line.endsWith('\n')).toBe(true);
     const parsed = JSON.parse(line.trim());
-    expect(parsed).toEqual({ ok: true, version: '0.4.0', schema_version: '1.0.0' });
+    expect(parsed).toEqual({ ok: true, version: '0.5.0', schema_version: '1.0.0' });
   });
 });

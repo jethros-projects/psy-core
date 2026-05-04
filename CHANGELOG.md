@@ -10,6 +10,8 @@ A schema bump only happens when the event row shape changes incompatibly.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-04
+
 ### Added
 
 - **GBrain adapter.** New `psy-core/gbrain` subpath wraps GBrain's
@@ -25,6 +27,17 @@ A schema bump only happens when the event row shape changes incompatibly.
   The live path runs a real GBrain PGLite engine through psy's SQLite audit
   store and drives GBrain's real Bun `operations.ts` boundary with an
   in-memory capture store.
+- **OpenClaw plugin.** Added `plugins/psy-core-openclaw`, a native OpenClaw
+  plugin that observes memory and skill access through OpenClaw hook surfaces
+  and writes paired psy audit envelopes in-process.
+- **Hermes trust-layer bootstrap.** Added `psy-core-hermes trust-layer` setup
+  flow, trust-layer docs, and verification coverage for Hermes memory and skill
+  auditing.
+
+### Changed
+
+- Updated Hermes and OpenClaw fallback/default references to pin the Node audit
+  engine at `psy-core@0.5.0`.
 
 ## [0.4.0] - 2026-04-29
 
@@ -129,6 +142,7 @@ Initial public release of `psy-core`.
 - Windows path-guard support is not currently provided; the seal
   infrastructure works cross-platform.
 
-[Unreleased]: https://github.com/jethros-projects/psy-core/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jethros-projects/psy-core/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jethros-projects/psy-core/releases/tag/v0.5.0
 [0.4.0]: https://github.com/jethros-projects/psy-core/releases/tag/v0.4.0
 [0.3.3]: https://github.com/jethros-projects/psy-core/releases/tag/v0.3.3

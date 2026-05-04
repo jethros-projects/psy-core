@@ -14,7 +14,7 @@ PSY_CORE_HERMES_VERSION: str = "0.1.3"
 #: The exact psy-core JS version this release pins. The npx fallback runs
 #: `npx -y psy-core@<PSY_CORE_VERSION> psy ingest`. The cross-lang-e2e CI
 #: workflow asserts that this pin still ingests cleanly end-to-end.
-PSY_CORE_VERSION: str = "0.4.0"
+PSY_CORE_VERSION: str = "0.5.0"
 
 #: The on-disk audit schema version this release was tested against. Used
 #: as the default for `schema_version_pin`; if the subprocess handshake

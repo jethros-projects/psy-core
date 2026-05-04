@@ -38,7 +38,7 @@ test("defaults payload capture off and only accepts pinned psy-core versions", (
   );
 
   assert.equal(defaults.payloadCapture, false);
-  assert.equal(floating.psyCoreVersion, "0.4.0");
+  assert.equal(floating.psyCoreVersion, "0.5.0");
   assert.equal(pinned.psyCoreVersion, "0.4.1-beta.1");
 });
 

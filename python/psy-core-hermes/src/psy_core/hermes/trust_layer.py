@@ -140,7 +140,7 @@ plugins:
     enabled: true
     actor_id: alice@example.com
     allow_anonymous: false
-    psy_core_version: "0.4.0"
+    psy_core_version: "0.5.0"
     psy_binary: /absolute/path/to/psy
     payload_capture: true
     redactor: default

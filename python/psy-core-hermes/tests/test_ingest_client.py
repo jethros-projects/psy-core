@@ -48,7 +48,7 @@ def test_resolve_spawn_plan_prefers_explicit_binary(tmp_path: Path) -> None:
     binary = tmp_path / "custom-psy"
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
-    plan = resolve_spawn_plan(str(binary), "0.4.0")
+    plan = resolve_spawn_plan(str(binary), "0.5.0")
     assert plan.argv[0] == str(binary)
     assert plan.argv[-1] == "ingest"
 
@@ -58,7 +58,7 @@ def test_resolve_spawn_plan_uses_psy_on_path(monkeypatch: pytest.MonkeyPatch, tm
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
-    plan = resolve_spawn_plan(None, "0.4.0")
+    plan = resolve_spawn_plan(None, "0.5.0")
     assert plan.argv[0].endswith("/psy")
     assert plan.description.startswith("path:")
 
@@ -70,9 +70,9 @@ def test_resolve_spawn_plan_falls_back_to_npx(monkeypatch: pytest.MonkeyPatch, t
     npx.chmod(0o755)
     # PATH contains only the dir with npx; psy is absent.
     monkeypatch.setenv("PATH", str(tmp_path))
-    plan = resolve_spawn_plan(None, "0.4.0")
+    plan = resolve_spawn_plan(None, "0.5.0")
     assert plan.argv[0].endswith("/npx")
-    assert "psy-core@0.4.0" in " ".join(plan.argv)
+    assert "psy-core@0.5.0" in " ".join(plan.argv)
     assert plan.description.startswith("npx:")
 
 
@@ -82,7 +82,7 @@ def test_resolve_spawn_plan_raises_when_neither_available(
 ) -> None:
     monkeypatch.setenv("PATH", str(tmp_path))  # empty dir
     with pytest.raises(FileNotFoundError):
-        resolve_spawn_plan(None, "0.4.0")
+        resolve_spawn_plan(None, "0.5.0")
 
 
 def test_ingest_client_handshake_and_send(fake_ingest_binary: Path) -> None:
