@@ -1,36 +1,39 @@
 # psy-core-openclaw
 
-> Audit receipts for OpenClaw memory and skills.
-> Let OpenClaw keep working, but make durable memory changes inspectable.
+OpenClaw agents can change their own memory. psy-core-openclaw gives those changes receipts.
 
-[![npm version](https://img.shields.io/npm/v/psy-core-openclaw.svg?color=cb3837)](https://www.npmjs.com/package/psy-core-openclaw)
-[![npm downloads](https://img.shields.io/npm/dm/psy-core-openclaw.svg)](https://www.npmjs.com/package/psy-core-openclaw)
-[![license](https://img.shields.io/npm/l/psy-core-openclaw.svg)](https://github.com/jethros-projects/psy-core/blob/main/LICENSE)
-[![node](https://img.shields.io/node/v/psy-core-openclaw.svg)](https://nodejs.org)
+Package: [`psy-core-openclaw`](https://www.npmjs.com/package/psy-core-openclaw). Core: [psy-core](../../README.md). Agent setup: [AGENT_INSTALL.md](AGENT_INSTALL.md). Issues: [GitHub Issues](https://github.com/jethros-projects/psy-core/issues).
 
-[npm](https://www.npmjs.com/package/psy-core-openclaw) | [psy-core](../../README.md) | [Agent install guide](AGENT_INSTALL.md) | [Issues](https://github.com/jethros-projects/psy-core/issues)
+OpenClaw memory is operational state. It can shape future tool use, personalization, skill selection, semantic recall, dreams, and memory-wiki updates. When that state changes, operators need to know what was attempted, what succeeded, and whether the log still verifies.
 
-**psy-core-openclaw is the OpenClaw adapter for [psy-core](https://github.com/jethros-projects/psy-core).** OpenClaw agents can read and rewrite durable memory, maintain dreams, build skills, store semantic memories, and update memory-wiki pages. Those writes are useful because they persist. psy-core-openclaw gives that persistence a tamper-evident trail.
+**psy-core-openclaw is the OpenClaw plugin for [psy-core](https://github.com/jethros-projects/psy-core).** It is a native OpenClaw plugin that listens through `before_tool_call` and `after_tool_call`, classifies memory and skill surfaces, and writes paired psy audit envelopes directly into the local SQLite chain.
 
-It does not replace OpenClaw memory. It does not become a memory provider. It is a native OpenClaw plugin that listens at the tool boundary through `before_tool_call` and `after_tool_call`, classifies memory and skill surfaces, and writes paired psy audit envelopes directly into the local SQLite chain.
+It does not replace OpenClaw memory. It does not become a memory provider. OpenClaw keeps its normal memory and skill workflow. You get receipts for durable changes.
 
-The result is simple: OpenClaw keeps its normal memory and skill workflow, and operators get receipts for what changed.
+> **Two commands to runtime receipts.** Install the plugin, set `actorId`, restart the gateway, then use `psy tail` and `psy verify --all` when you need to inspect the chain.
+
+## Who This Is For
+
+- **OpenClaw operators** who want memory, skill, LanceDB, and memory-wiki changes to be inspectable.
+- **Agent builders** who need a local audit trail without changing OpenClaw's memory backend.
+- **Teams running shared agents** who need attribution for durable state changes.
+- **Security-minded users** who want tamper-evident receipts for memory paths, not a universal activity logger.
 
 ## Quick Install
 
-From this repository:
+Published package:
 
 ```bash
-openclaw plugins install ./plugins/psy-core-openclaw
+openclaw plugins install psy-core-openclaw
 openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "you@example.com"
 openclaw gateway restart
 ```
 
-For the published package, the native OpenClaw install path is:
+From this repository:
 
 ```bash
-openclaw plugins install psy-core-openclaw
+openclaw plugins install ./plugins/psy-core-openclaw
 ```
 
 Install `psy-core` only when you want the CLI for verification, tailing, or querying:
@@ -42,6 +45,29 @@ psy verify --all
 ```
 
 The plugin writes audit rows in-process at runtime. It does not shell out to `psy`, `npx`, or a configured binary.
+
+## See It Work
+
+```text
+OpenClaw: write a new project memory.
+
+psy:      intent  operation=create actor=you@example.com path=MEMORY.md
+
+OpenClaw: file tool writes the memory
+
+psy:      result  status=success hash=... prev_hash=...
+
+You:      psy query --actor you@example.com
+
+psy:      shows the attempted write, confirmed result, tool surface,
+          timestamp, redacted preview, and chain position
+
+You:      psy verify --all
+
+psy:      active DB, hashes, orphan checks, and sealed tail agree
+```
+
+OpenClaw keeps working normally. psy-core-openclaw makes the durable state path inspectable.
 
 ## Why This Exists
 
@@ -56,9 +82,9 @@ Use psy-core-openclaw when you want to answer questions like:
 - Was a write attempted but never confirmed?
 - Has the audit log been edited, reordered, or truncated since it was written?
 
-The adapter gives OpenClaw operators receipts without forcing a new memory backend.
+The plugin gives OpenClaw operators receipts without forcing a new memory backend.
 
-## How It Works
+## The OpenClaw Audit Loop
 
 ```text
 OpenClaw gateway process                     psy-core audit store
@@ -77,7 +103,7 @@ after_tool_call hook
                                              HMAC sealed head is advanced
 ```
 
-The OpenClaw plugin owns observation. The psy-core audit engine owns the canonical hash chain and sealed head. That keeps OpenClaw-specific hook logic close to OpenClaw while preserving the same verifier used by every psy adapter.
+The OpenClaw plugin owns observation. The psy-core audit engine owns the canonical hash chain and sealed head. That keeps OpenClaw-specific hook logic close to OpenClaw while preserving the same verifier used by every psy-core integration.
 
 ## What Gets Captured
 
@@ -155,7 +181,7 @@ The old `psyBinary` and `psyCoreVersion` config keys are still accepted for comp
 
 ## Agentic Install
 
-The plugin ships a short [agent install guide](AGENT_INSTALL.md) for OpenClaw agents that are asked to configure or verify the adapter.
+The plugin ships a short [agent install guide](AGENT_INSTALL.md) for OpenClaw agents that are asked to configure or verify the plugin.
 
 Copy this prompt into OpenClaw when you want the agent to do the setup:
 
@@ -285,7 +311,7 @@ Verified OpenClaw contracts:
 
 ## Security Notes
 
-- The adapter records durable memory and skill activity; it does not approve or deny OpenClaw tool calls.
+- The plugin records durable memory and skill activity; it does not approve or deny OpenClaw tool calls.
 - Payload capture is off by default to avoid storing memory text previews. If enabled, built-in redaction is useful operational hygiene, not a DLP system.
 - The seal key protects tail verification. Keep `sealKeyPath` private and mode `0600`.
 - `psy verify --all` should be part of any incident review involving memory or skill changes.

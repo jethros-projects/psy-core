@@ -1,18 +1,24 @@
 # Releasing psy-core
 
-The release pipeline is fully automated: push a `v*.*.*` git tag and the
-GitHub Actions workflow at `.github/workflows/publish.yml` builds, verifies,
-and publishes to npm with SLSA build provenance via OIDC.
+One tag ships one package. The workflows are deliberately boring: verify the version, run the package tests, build the artifact, publish with provenance or trusted publishing.
+
+| Package | Tag format | Workflow | Registry |
+|---|---|---|---|
+| `psy-core` | `vX.Y.Z` | `.github/workflows/publish.yml` | npm |
+| `psy-core-hermes` | `psy-core-hermes-vX.Y.Z` | `.github/workflows/publish-pypi.yml` | PyPI |
+| `psy-core-openclaw` | `psy-core-openclaw-vX.Y.Z` | `.github/workflows/publish-openclaw.yml` | npm |
+
+The TypeScript package is the reference implementation. The Hermes plugin pins an exact Node audit engine version. The OpenClaw plugin ships as a native OpenClaw npm package.
 
 ## Release loop
 
 1. Bump `package.json` `version` (semver: patch for fixes, minor for features, major for breaking).
 2. Add a `## [X.Y.Z] - YYYY-MM-DD` entry to `CHANGELOG.md`. Update the `[Unreleased]` compare link at the bottom and add the new version's release-tag link.
 3. Run `npm install` so `package-lock.json` picks up the bumped version.
-4. Commit: `chore(release): vX.Y.Z — <one-line summary>`.
+4. Commit: `chore(release): vX.Y.Z - <one-line summary>`.
 5. Push commit: `git push origin main`.
-6. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z — <summary>"`.
-7. Push tag: `git push origin vX.Y.Z` ← this fires the publish workflow.
+6. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z - <summary>"`.
+7. Push tag: `git push origin vX.Y.Z` - this fires the publish workflow.
 
 The workflow:
 - Runs only on `v*.*.*` tag pushes (not branch pushes).
@@ -37,7 +43,7 @@ Watch the run: `gh run watch <run-id>` or the Actions tab on GitHub.
 
 ## NPM_TOKEN
 
-The publish workflow requires an `NPM_TOKEN` repository secret. Generate a granular access token with read-and-write permission on `psy-core` at npmjs.com, store it under repository secrets, and rotate annually. Configure 2FA-bypass on the token if your npm account has 2FA enabled — automated CI cannot complete an OTP challenge.
+The publish workflow requires an `NPM_TOKEN` repository secret. Generate a granular access token with read-and-write permission on `psy-core` at npmjs.com, store it under repository secrets, and rotate annually. Configure 2FA-bypass on the token if your npm account has 2FA enabled - automated CI cannot complete an OTP challenge.
 
 ## Releasing the `psy-core-hermes` PyPI sibling
 
@@ -50,11 +56,30 @@ Version-pinning protocol:
 3. Keep `PSY_CORE_VERSION` in that same file pinned to the EXACT npm `psy-core` version that this Python release targets. Never `latest`, never a range.
 4. The cross-language e2e workflow (`.github/workflows/cross-lang-e2e.yml`) verifies that `psy-core-hermes` can spawn `psy-core` of the pinned version end-to-end. CI fails the Python release if the pinned JS version no longer ingests cleanly.
 5. Tag and publish:
-    - `git tag -a psy-core-hermes-vX.Y.Z -m "psy-core-hermes vX.Y.Z — <summary>"`
+    - `git tag -a psy-core-hermes-vX.Y.Z -m "psy-core-hermes vX.Y.Z - <summary>"`
     - `git push origin psy-core-hermes-vX.Y.Z`
 
 The PyPI workflow runs `uv build` and publishes via PyPI Trusted Publishing.
 
+## Releasing the `psy-core-openclaw` npm plugin
+
+The OpenClaw plugin lives under `plugins/psy-core-openclaw/` and publishes separately from the root `psy-core` package. It has no build step; the package is plain ESM JavaScript plus the OpenClaw manifest, skill, install guide, and README.
+
+Version protocol:
+
+1. Bump `plugins/psy-core-openclaw/package.json` `version`.
+2. Update `plugins/psy-core-openclaw/package.json` `openclaw.install.npmSpec` to the same exact version.
+3. Update the version reference in `plugins/psy-core-openclaw/README.md`.
+4. Run:
+    - `cd plugins/psy-core-openclaw`
+    - `npm test`
+    - `npm pack --dry-run`
+5. Tag and publish:
+    - `git tag -a psy-core-openclaw-vX.Y.Z -m "psy-core-openclaw vX.Y.Z - <summary>"`
+    - `git push origin psy-core-openclaw-vX.Y.Z`
+
+The workflow checks out `openclaw/openclaw`, verifies the tag matches package metadata, runs package tests with `OPENCLAW_REPO` pointed at the official checkout, then publishes to npm with provenance.
+
 ## Cross-package compatibility
 
-The TypeScript package is the reference. The Python package speaks JSONL stdio against `psy ingest`. Only minor JS version bumps that preserve the ingest envelope schema are safe to combine with an existing Python release; any breaking ingest schema change requires a coordinated Python bump and a new pin.
+The TypeScript package is the reference. The Python package speaks JSONL stdio against `psy ingest`. The OpenClaw plugin writes psy-compatible envelopes in-process. Only minor JS version bumps that preserve the ingest envelope schema are safe to combine with an existing Python release; any breaking ingest schema change requires a coordinated Python bump and a new pin.

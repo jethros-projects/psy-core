@@ -1,55 +1,66 @@
-# psy-core-hermes example — auditing a Hermes Agent session
+# psy-core-hermes example
 
-A self-contained walkthrough that wires `psy-core-hermes` into a fresh Hermes
-agent install, exercises a few memory writes, and verifies the
-hash-chained, HMAC-sealed audit log.
+A tiny Hermes lab: install the plugin, make Hermes write memory, then verify the receipts.
 
-## What this demonstrates
+Use this when you want to see the whole loop before wiring psy-core-hermes into a real agent. The script bootstraps a local Python environment, installs the Hermes plugin, points it at psy-core, and gives you a short session that should produce paired `intent` and `result` rows.
 
-- Installing `psy-core-hermes` from PyPI into a Hermes-compatible Python env
-- Inserting the `plugins.psy` block via `psy-core-hermes init`
-- Running Hermes interactively while `psy ingest` writes to `~/.psy/audit.db`
-- Inspecting the chain with `psy tail` / `psy query` / `psy verify`
+> **Ten minutes to a working audit chain.** Run `./run.sh`, start `psy tail`, make Hermes remember something, then run `psy verify --all`.
 
-## Files
+## What This Shows
 
-- `hermes-config.yaml` — the `~/.hermes/config.yaml` layout with a
-  populated `plugins.psy` block.
-- `run.sh` — bootstrap script that installs both sides into a fresh
-  virtualenv + npm-global location, runs `psy-core-hermes doctor`, and
-  prints next steps.
+- Installing `psy-core-hermes` from PyPI into a Hermes-compatible Python environment.
+- Writing the `plugins.psy` config block through `psy-core-hermes`.
+- Running Hermes while `psy ingest` writes to the local audit DB.
+- Inspecting the chain with `psy tail`, `psy query`, and `psy verify`.
 
-## Walkthrough
+## Quick Start
 
 ```bash
-# 1. Bootstrap (creates a venv at .venv/ and installs psy-core-hermes)
 ./run.sh --actor-id you@example.com
+```
 
-# To also install Hermes Agent from GitHub into that venv:
+To also install Hermes Agent from GitHub into the local virtualenv:
+
+```bash
 ./run.sh --actor-id you@example.com --with-hermes
+```
 
-# 2. In one terminal, watch psy tail:
+In one terminal:
+
+```bash
 psy tail
+```
 
-# 3. In another terminal, drive Hermes:
+In another terminal:
+
+```bash
 .venv/bin/hermes
-> save: "I prefer email, in the EU timezone"
-> recall my preferences
+```
 
-# 4. Verify the chain:
+Then ask Hermes to write memory:
+
+```text
+save: "I prefer email, in the EU timezone"
+recall my preferences
+```
+
+Verify the chain:
+
+```bash
 psy verify --all
 ```
 
-You should see paired `intent` + `result` rows for each memory mutation.
-`psy verify --all` should exit 0 and print `verification passed`.
+You should see paired `intent` and `result` rows for each memory mutation. `psy verify --all` should exit 0 and print `verification passed`.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `hermes-config.yaml` | Example `~/.hermes/config.yaml` with a populated `plugins.psy` block. |
+| `run.sh` | Bootstrap script that installs both sides, runs `psy-core-hermes doctor`, and prints next steps. |
 
 ## Scope
 
-This example is **memory-only** — it captures every memory mutation
-Hermes performs (MEMORY.md, USER.md, skills) and nothing else. Tool
-calls, LLM calls, and session lifecycle events are deliberately not
-captured in the initial Hermes adapter scope; they'll return as separate
-adapter scopes if there's user demand.
+This is a memory-and-skill audit example. It captures Hermes writes to `MEMORY.md`, `USER.md`, and skills. It does not capture ordinary tool calls, LLM calls, or session lifecycle events.
 
-See [`python/psy-core-hermes/README.md`](../../python/psy-core-hermes/README.md)
-for the full configuration reference and operation table.
+For the full configuration reference and operation table, use [python/psy-core-hermes/README.md](../../python/psy-core-hermes/README.md).

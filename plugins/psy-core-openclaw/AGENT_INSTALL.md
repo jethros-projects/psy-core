@@ -1,7 +1,17 @@
 # Agent Install Guide
 
-Use this guide when an OpenClaw agent is asked to install or verify the
-`psy-core-openclaw` plugin.
+Use this when an OpenClaw agent is asked to install or verify `psy-core-openclaw`.
+
+The goal is simple: OpenClaw keeps its memory workflow, and psy-core records durable memory and skill changes into a verifiable audit chain.
+
+## What Success Looks Like
+
+| Check | Success condition |
+|---|---|
+| Plugin install | `openclaw plugins inspect psy-core --json` shows the plugin loaded and enabled. |
+| Identity | `plugins.entries.psy-core.config.actorId` is set unless the user explicitly allowed anonymous local testing. |
+| Runtime | The gateway has restarted after config changes. |
+| Audit chain | `psy verify --all` succeeds, or there are no events yet and the user has not approved a smoke-test write. |
 
 ## Choose the Install Source
 
@@ -60,7 +70,7 @@ openclaw config set plugins.entries.psy-core.config.purpose "openclaw-audit"
 
 ## Verify
 
-Run these checks before declaring the install complete.
+Run these checks before declaring the install complete:
 
 ```bash
 openclaw plugins inspect psy-core --json
@@ -86,6 +96,18 @@ ask before creating a test memory or skill write.
   OpenClaw's dangerous-code patterns.
 - Keep the local plugin path stable. Reinstall with `--force` only when the user
   wants to replace the same plugin id from a newer local path or archive.
+
+## User-Facing Summary
+
+When the install is done, report it in this shape:
+
+```text
+psy-core-openclaw is installed and enabled.
+Actor: <actorId>
+Payload previews: off
+Verification: <passed | no events yet | failed with reason>
+Next useful command: psy tail
+```
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `psy-core` will be documented in this file.
+This is the shipping log for psy-core: what memory surfaces became auditable, what verification got stronger, and what operators need to know before upgrading.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -22,7 +22,7 @@ A schema bump only happens when the event row shape changes incompatibly.
 ### Changed
 
 - Hardened sealed-tail handling, direct ingest paths, and observer behavior
-  across the TypeScript audit engine, Hermes adapter, and OpenClaw plugin.
+  across the TypeScript audit engine, Hermes plugin, and OpenClaw plugin.
 - Updated Hermes and OpenClaw fallback/default references to pin the Node audit
   engine at `psy-core@0.5.1`.
 
@@ -74,13 +74,13 @@ A schema bump only happens when the event row shape changes incompatibly.
   `purpose`, and `outcome` so the ingest envelope can thread observer-
   side identity into the row without going through the in-process
   `Auditor` layer.
-- **Hermes Agent adapter.** `psy-core-hermes` (PyPI sibling, published
+- **Hermes Agent plugin.** `psy-core-hermes` (PyPI sibling, published
   separately from this repo at `python/psy-core-hermes/`) is a plain Hermes
   plugin that subscribes to `pre_tool_call` (filtered to the `memory`
   and `skill_manage` tools) plus a filesystem watcher on
   `~/.hermes/memories/MEMORY.md` and `~/.hermes/memories/USER.md`. It
   forwards JSONL to a long-lived `psy ingest` subprocess (PATH first,
-  `npx -y psy-core@<exact>` fallback). Memory operations only — tool,
+  `npx -y psy-core@<exact>` fallback). Memory operations only - tool,
   LLM, and session-lifecycle telemetry are explicitly out of scope to
   keep the brand crisp.
 - **Public types**: `IngestEnvelope`, `IntentEnvelope`, `ResultEnvelope`,
@@ -93,7 +93,7 @@ A schema bump only happens when the event row shape changes incompatibly.
 - The `IngestEnvelopeSchema` accepts intents and results as a discriminated
   union on `type`. The wire format is documented in
   `python/psy-core-hermes/README.md` but is not a public spec for third-party
-  implementations — TypeScript is the reference.
+  implementations - TypeScript is the reference.
 
 ## [0.3.3] - 2026-04-27
 
@@ -118,7 +118,7 @@ Initial public release of `psy-core`.
   key (`.psy/seal-key`, mode `0600`, or `PSY_SEAL_KEY` env var) so tail
   truncation, mid-chain mutation, reordering, and whole-DB substitution
   are all detected by `psy verify`.
-- **Two-phase audit** (intent → handler → result) with explicit outcome
+- **Two-phase audit** (intent -> handler -> result) with explicit outcome
   states for handler errors, anonymous calls, redactor errors, audit
   timeouts, and path-guard rejections.
 - **Identity propagation** via Node `AsyncLocalStorage`. `runWithContext`

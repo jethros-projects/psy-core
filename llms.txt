@@ -1,0 +1,64 @@
+# psy-core LLM map
+
+psy-core gives AI agent memory writes tamper-evident receipts. It wraps supported memory providers and agent memory surfaces, writes paired intent/result audit rows, hashes each canonical row into a SQLite-backed chain, and seals the tail with HMAC.
+
+Canonical repository: https://github.com/jethros-projects/psy-core
+Core package: https://www.npmjs.com/package/psy-core
+Hermes plugin: https://pypi.org/project/psy-core-hermes/
+OpenClaw plugin: https://www.npmjs.com/package/psy-core-openclaw
+
+## Read order
+
+1. README.md for the product shape and install paths.
+2. SECURITY.md before making claims about what verification proves.
+3. The relevant adapter or plugin README before changing an integration.
+4. AGENTS.md before modifying code or docs as an agent.
+
+## Core docs
+
+- README.md: product overview, install flow, adapter coverage, CLI reference, configuration, guarantees, repository map.
+- SECURITY.md: coordinated disclosure, threat model, what psy-core detects, what it does not detect, operational notes.
+- CONTRIBUTING.md: local contribution rules.
+- AGENTS.md: agent-facing repo operating guide.
+- CHANGELOG.md: release notes.
+- RELEASING.md: release procedure.
+
+## Source map
+
+- src/auditor.ts: two-phase audit writer, intent/result flow, hash-chain append behavior.
+- src/store.ts: SQLite persistence for audit rows and metadata.
+- src/verify.ts: chain, archive, orphan, and seal verification.
+- src/seal.ts: HMAC seal key and sealed-head pointer handling.
+- src/canonical.ts: canonical JSON serialization.
+- src/redactor.ts: payload preview redaction.
+- src/context.ts: AsyncLocalStorage context propagation.
+- src/provider.ts: provider registry.
+- src/cli.ts: psy command-line interface.
+- src/ingest.ts: JSONL envelope ingestion for non-Node observers.
+- src/adapters/: provider-specific wrappers for Anthropic Memory, Letta, Mastra, Mem0, LangChain, LangGraph, GBrain, and related types.
+
+## Integration docs
+
+- python/psy-core-hermes/README.md: Hermes Agent plugin, trust-layer command, hook model, captured surfaces, operator reference.
+- plugins/psy-core-openclaw/README.md: OpenClaw plugin, hook model, captured surfaces, operator reference.
+- examples/hermes-agent/README.md: local Hermes walkthrough.
+
+## Test map
+
+- tests/*: root TypeScript and adapter tests.
+- tests/e2e/ts-adapters-shared-chain.e2e.ts: shared-chain adapter e2e.
+- python/psy-core-hermes/tests/: Hermes plugin tests.
+- plugins/psy-core-openclaw/test/: OpenClaw plugin tests.
+
+## Key boundaries
+
+- psy-core is tamper-evident, not tamper-proof.
+- psy-core records durable memory and skill surfaces, not every agent action.
+- The wrapper path fails closed before provider execution if the intent row cannot be written.
+- If the provider succeeds but the result row cannot be written, verification can flag the orphaned intent.
+- Payload preview redaction is best-effort diagnostics, not a DLP guarantee.
+- A stock GBrain CLI/server process is not audited unless the host imports and applies `psy-core/gbrain`.
+
+## Voice
+
+When summarizing psy-core, lead with the receipt: what was attempted, what happened, who/tenant/session did it, and whether the chain still verifies. Avoid broad compliance language unless the exact threat model is included.

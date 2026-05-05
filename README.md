@@ -1,21 +1,27 @@
 # psy-core
 
-> Verifiable receipts for agent memory.
-> Audit what changed, who changed it, and whether the record still checks out.
+Your AI agent is smart. Its memory is mutable. psy-core gives every durable memory change a receipt.
 
-[![npm version](https://img.shields.io/npm/v/psy-core.svg?color=cb3837)](https://www.npmjs.com/package/psy-core)
-[![npm downloads](https://img.shields.io/npm/dm/psy-core.svg)](https://www.npmjs.com/package/psy-core)
-[![license](https://img.shields.io/npm/l/psy-core.svg)](https://github.com/jethros-projects/psy-core/blob/main/LICENSE)
-[![node](https://img.shields.io/node/v/psy-core.svg)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
+Packages: `psy-core` for Node SDKs and the CLI, `psy-core-hermes` for Hermes Agent, and `psy-core-openclaw` for OpenClaw.
 
-[npm](https://www.npmjs.com/package/psy-core) | [Hermes adapter](python/psy-core-hermes/README.md) ![psy-core-hermes downloads](https://static.pepy.tech/personalized-badge/psy-core-hermes?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=GREEN&left_text=downloads) | [Hermes example](examples/hermes-agent/README.md) | [Issues](https://github.com/jethros-projects/psy-core/issues)
+Docs: [psy-core npm](https://www.npmjs.com/package/psy-core), [Hermes plugin](python/psy-core-hermes/README.md), [Hermes example](examples/hermes-agent/README.md), [OpenClaw plugin](plugins/psy-core-openclaw/README.md), [OpenClaw agent install](plugins/psy-core-openclaw/AGENT_INSTALL.md), [OpenClaw npm](https://www.npmjs.com/package/psy-core-openclaw), [AGENTS.md](AGENTS.md), [llms.txt](llms.txt), [Issues](https://github.com/jethros-projects/psy-core/issues).
 
-**psy-core is a tamper-evident audit layer for agents that remember.** Modern agents update user profiles, rewrite working memory, save checkpoints, curate skills, and carry facts across sessions. Those writes are not chat history; they are operational state. When that state changes, you need a trail that can be inspected later.
+Agents do not just answer questions anymore. They update user profiles, rewrite working memory, create skills, save checkpoints, sync semantic stores, and carry facts from one session into the next. That is not chat history. That is operational state.
 
-psy-core sits at the memory boundary. It wraps the memory SDK you already use, records a before-the-call `intent` row, records an after-the-call `result` row, and links each event into a local SQLite hash chain sealed by HMAC. You keep your existing memory provider. psy gives it receipts.
+If memory can change the next action your agent takes, the write deserves a trail.
 
-Use it while developing to see what your agent is learning. Use it in production to investigate drift, unexpected personalization, failed writes, memory poisoning, or suspicious truncation. Use `psy verify --all` when you need the chain to prove that the log still agrees with itself.
+**psy-core is that trail.** It sits at the memory boundary, wraps the SDK or agent surface you already use, records an `intent` row before the call, records a `result` row after the call, links every row into a local SQLite hash chain, and seals the tail with HMAC. You keep Anthropic Memory, Letta, Mastra, Mem0, LangChain, LangGraph, GBrain, Hermes, or OpenClaw. psy-core gives the write path receipts.
+
+Use it while developing to see what your agent is learning. Use it in production to investigate drift, unexpected personalization, failed writes, memory poisoning, suspicious truncation, or skill churn. Run `psy verify --all` when the chain needs to prove it still agrees with itself.
+
+> **Two minutes to first receipts.** Install, initialize the chain, wrap the memory surface, then watch rows land with `psy tail`.
+
+## Who This Is For
+
+- **Agent builders** who need memory observability without changing providers.
+- **Teams shipping personalization** who need to explain why an agent remembered, forgot, or rewrote something.
+- **Operators of GBrain, Hermes, and OpenClaw** who want durable agent memory to stay inspectable.
+- **Security and compliance-minded engineers** who need tamper-evident local logs before they make larger governance claims.
 
 ## Quick Install
 
@@ -24,7 +30,7 @@ npm install psy-core
 npx psy init
 ```
 
-`psy init` creates the project config, SQLite store, archive directory, and a local seal key. The sealed head pointer is written when the first audit event lands.
+`psy init` creates `.psy.json`, the SQLite store, archive directory, local seal key, and the sealed-head marker. The first audit event advances the sealed head pointer.
 
 Then wrap the memory surface you already use:
 
@@ -35,17 +41,54 @@ import { wrap } from 'psy-core/anthropic-memory';
 const auditedMemory = wrap(yourMemoryHandlers, { actorId: 'support-agent' });
 
 await runWithContext({ actorId: 'user_123', tenantId: 'acme' }, async () => {
-  // call your agent with auditedMemory
+  // Call your agent with auditedMemory.
 });
 ```
 
-Watch and verify from another terminal:
+Watch the chain from another terminal:
 
 ```bash
 psy tail
 psy query --actor user_123
 psy verify --all
 ```
+
+Stop there. You will know if your agent's memory path is visible enough.
+
+## Agent Integrations
+
+psy-core has two first-class agent plugins for systems that already manage memory and skills:
+
+| Agent | Install | What psy-core sees | Start here |
+|---|---|---|---|
+| Hermes Agent | `pip install psy-core-hermes` | `MEMORY.md`, `USER.md`, and `skill_manage` writes streamed through `psy ingest` | [Hermes plugin](python/psy-core-hermes/README.md) and [Hermes example](examples/hermes-agent/README.md) |
+| OpenClaw | `openclaw plugins install psy-core-openclaw` | `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, Skill Workshop, LanceDB memory, and memory-wiki | [OpenClaw plugin](plugins/psy-core-openclaw/README.md) and [agent install guide](plugins/psy-core-openclaw/AGENT_INSTALL.md) |
+
+Both keep the host agent's normal memory workflow. psy-core only adds the receipt layer: paired `intent` / `result` rows, hash-chain verification, and a sealed tail.
+
+## See It Work
+
+```text
+Agent: remember that Alice prefers concise incident summaries.
+
+psy:   intent  seq=101 operation=create actor=user_123 path=memory/preferences
+
+SDK:   provider writes to memory normally
+
+psy:   result  seq=102 status=success hash=... prev_hash=...
+
+You:   psy query --actor user_123 --operation create
+
+psy:   shows the attempted write, confirmed result, provider surface,
+       session id, timestamp, redacted preview, and chain position
+
+You:   psy verify --all
+
+psy:   active DB, archives, hashes, sequence, orphan checks, and sealed
+       tail all agree
+```
+
+The agent keeps its memory. You get the receipts.
 
 ## What It Captures
 
@@ -57,25 +100,39 @@ psy verify --all
 | Mem0 | `npm install mem0ai` | `psy-core/mem0` | view, create, str_replace, delete |
 | LangChain chat history | `npm install @langchain/core` | `psy-core/langchain` | view, insert, delete |
 | LangGraph checkpointers | `npm install @langchain/langgraph-checkpoint` | `psy-core/langgraph` | view, create, insert, delete |
-| GBrain operations and BrainEngine | `bun link` / installed GBrain | `psy-core/gbrain` | view, create, str_replace, insert, delete, rename |
+| GBrain operations and BrainEngine | `bun link` or installed GBrain | `psy-core/gbrain` | view, create, str_replace, insert, delete, rename |
 | Hermes Agent memory and skills | `pip install psy-core-hermes` | Python plugin | create, str_replace, delete |
-| OpenClaw memory and skills | `openclaw plugins install ./plugins/psy-core-openclaw` | OpenClaw plugin | view, create, str_replace, delete |
+| OpenClaw memory and skills | `openclaw plugins install psy-core-openclaw` | OpenClaw plugin | view, create, str_replace, delete |
 
-The Node adapters write directly to the audit store. The Hermes adapter runs in Python and streams canonical JSONL into `psy ingest`, so it lands in the same chain and verifies with the same CLI. The OpenClaw plugin observes memory and skill tool calls from OpenClaw's plugin hooks and writes psy-compatible audit envelopes in-process; see [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md).
+The Node adapters write directly to the audit store. The Hermes plugin runs in Python and streams canonical JSONL into `psy ingest`, so it lands in the same chain and verifies with the same CLI. The OpenClaw plugin observes memory and skill tool calls from OpenClaw plugin hooks and writes psy-compatible audit envelopes in-process.
 
-## Getting Started
+## The Audit Loop
 
-### 1. Initialize the Chain
+psy-core is a process, not a dashboard bolted on after the fact:
 
-```bash
-npx psy init
+```text
+Memory call starts
+  -> psy resolves actor, tenant, session, provider, and path
+  -> intent row is written before the provider runs
+  -> provider runs normally
+  -> result row records success or failure
+  -> row JSON is canonicalized
+  -> event hash links to prev_hash
+  -> sealed head stores the latest seq + event_hash
+  -> psy verify walks active DB, archives, and seal
 ```
 
-The default store lives at `.psy/events.sqlite`. The default seal key lives at `.psy/seal-key` with mode `0600`. The config marker in `.psy.json` tells `psy verify` that a sealed tail is expected, so deleting `.psy/head.json` is treated as a possible downgrade instead of silently passing.
+Every audited call gets a durable pair of facts: what was attempted and what happened. If the process dies after intent but before result, verification flags the orphan instead of pretending the write never happened.
 
-### 2. Wrap a Memory Provider
+## Adapter Notes
 
-Anthropic Memory Tool:
+### Anthropic Memory Tool
+
+```bash
+npm install @anthropic-ai/sdk
+```
+
+Use `psy-core/anthropic-memory` for filesystem-shaped memory handlers. The adapter validates memory paths and records view, create, replacement, insertion, deletion, and rename operations.
 
 ```ts
 import { betaMemoryTool } from '@anthropic-ai/sdk/helpers/beta/memory';
@@ -87,84 +144,9 @@ const fsHandlers = await BetaLocalFilesystemMemoryTool.init('./memory');
 const memory = betaMemoryTool(wrap(fsHandlers, { actorId: 'support-agent' }));
 
 await runWithContext({ actorId: 'user_123', sessionId: 'thread_abc' }, async () => {
-  // pass `memory` to the Anthropic SDK
+  // Pass memory to the Anthropic SDK.
 });
 ```
-
-LangChain chat history:
-
-```ts
-import { InMemoryChatMessageHistory } from '@langchain/core/chat_history';
-import { runWithContext } from 'psy-core';
-import { wrap } from 'psy-core/langchain';
-
-const history = wrap(new InMemoryChatMessageHistory(), {
-  actorId: 'user_123',
-  sessionId: 'thread_abc',
-});
-
-await runWithContext({ actorId: 'user_123', sessionId: 'thread_abc' }, async () => {
-  await history.addUserMessage('Remember that I prefer email.');
-  await history.getMessages();
-});
-```
-
-### 3. Inspect the Trail
-
-```bash
-psy tail --once
-psy query --session thread_abc --json
-psy verify --all
-```
-
-A successful verification means the active DB, rotated archives, hash chain, and sealed head agree.
-
-## CLI Quick Reference
-
-| Task | Command |
-|---|---|
-| Create config, store, archives, and seal key | `psy init` |
-| Seal an existing unsealed DB tail | `psy init --migrate` |
-| Watch current and future rows | `psy tail` |
-| Emit machine-readable rows | `psy tail --json` |
-| Query by identity or operation | `psy query --actor user_123 --operation str_replace` |
-| Verify active DB, archives, and seal | `psy verify --all` |
-| Skip seal verification explicitly | `psy verify --no-seal` |
-| Export active rows | `psy export --format jsonl` |
-| Append events from non-Node observers | `psy ingest` |
-
-## Common Workflows
-
-| Scenario | What to do |
-|---|---|
-| Debug a surprising memory | Run `psy query --actor <id>` and inspect the paired `intent` and `result` rows around the timestamp. |
-| Watch an agent while developing | Run `psy tail` beside your local agent process. |
-| Prove the log was not edited | Run `psy verify --all` in CI, deploy checks, or incident response. |
-| Attribute writes in a multi-user app | Wrap calls in `runWithContext({ actorId, tenantId, sessionId })`. |
-| Connect a Python observer | Send canonical envelopes to `psy ingest`; `psy-core-hermes` does this for Hermes Agent. |
-| Limit stored content | Keep payload capture disabled or provide a custom redactor. |
-
-## How the Chain Works
-
-1. A wrapped method is called with an operation such as `create`, `view`, or `delete`.
-2. psy resolves identity from wrapper options plus `runWithContext`.
-3. psy writes an `intent` row before the memory provider runs.
-4. The provider runs normally.
-5. psy writes a `result` row with success or failure details.
-6. The row is canonicalized, hashed, and chained to the previous row.
-7. The latest tail `(seq, event_hash, timestamp)` is signed into the sealed head pointer.
-
-This gives every call a durable pair of facts: what was attempted and what happened. If the process dies after intent but before result, verification flags the orphan instead of pretending the write never happened.
-
-## Adapter Notes
-
-### Anthropic Memory Tool
-
-```bash
-npm install @anthropic-ai/sdk
-```
-
-Use `psy-core/anthropic-memory` for filesystem-shaped memory handlers. The adapter validates memory paths and records view, create, replacement, insertion, deletion, and rename operations.
 
 ### Letta
 
@@ -189,7 +171,7 @@ const agentBlocks = wrap(client.agents.blocks, { actorId: 'user_123' });
 npm install @mastra/core @mastra/memory
 ```
 
-The Mastra adapter covers the public `Memory` class surface for working memory, thread/message memory, semantic recall, and observational memory. Use psy's wrapper as the audit source of truth when you need chain verification.
+The Mastra adapter covers the public `Memory` class surface for working memory, thread/message memory, semantic recall, and observational memory. Use psy-core's wrapper as the audit source of truth when you need chain verification.
 
 ### Mem0
 
@@ -197,7 +179,7 @@ The Mastra adapter covers the public `Memory` class surface for working memory, 
 npm install mem0ai
 ```
 
-The Mem0 adapter records the SDK call boundary. Mem0's `add` can semantically upsert multiple memories inside one call; psy records the auditable boundary and stores the SDK result preview when payload capture is enabled.
+The Mem0 adapter records the SDK call boundary. Mem0's `add` can semantically upsert multiple memories inside one call; psy-core records the auditable boundary and stores the SDK result preview when payload capture is enabled.
 
 ### LangChain
 
@@ -207,13 +189,29 @@ npm install @langchain/core
 
 Wrap anything implementing `BaseChatMessageHistory`. Use `sessionId` so chat rows are grouped by conversation thread.
 
+```ts
+import { InMemoryChatMessageHistory } from '@langchain/core/chat_history';
+import { runWithContext } from 'psy-core';
+import { wrap } from 'psy-core/langchain';
+
+const history = wrap(new InMemoryChatMessageHistory(), {
+  actorId: 'user_123',
+  sessionId: 'thread_abc',
+});
+
+await runWithContext({ actorId: 'user_123', sessionId: 'thread_abc' }, async () => {
+  await history.addUserMessage('Remember that I prefer email.');
+  await history.getMessages();
+});
+```
+
 ### LangGraph
 
 ```bash
 npm install @langchain/langgraph-checkpoint
 ```
 
-Wrap a `BaseCheckpointSaver` implementation such as memory, SQLite, or Postgres. psy records checkpoint reads, writes, partial writes, and thread deletion.
+Wrap a `BaseCheckpointSaver` implementation such as memory, SQLite, or Postgres. psy-core records checkpoint reads, writes, partial writes, and thread deletion.
 
 ### GBrain
 
@@ -233,7 +231,7 @@ const auditedEngine = wrapEngine(engine, { actorId: 'agent-1', brainId: 'host' }
 |---|---|---|
 | Page reads, lists, search, query, chunks, graph reads | `view` | Query text is hashed in `memory_path`. |
 | Page writes, raw data writes, version reverts, link rewrites | `str_replace` | One audit pair per GBrain call boundary. |
-| Tags, links, timeline entries, chunk deletes, version creates | `insert` / `delete` | Bulk calls are recorded once at the boundary, not once per row. |
+| Tags, links, timeline entries, chunk deletes, version creates | `insert` or `delete` | Bulk calls are recorded once at the boundary, not once per row. |
 | `updateSlug` | `rename` | Records both old and new page paths. |
 
 | Surface | Captured? | Why |
@@ -241,8 +239,8 @@ const auditedEngine = wrapEngine(engine, { actorId: 'agent-1', brainId: 'host' }
 | Calls made through `wrapOperations` or `wrapEngine` | Yes | The host has applied the adapter. |
 | Writes inside `engine.transaction(async tx => ...)` | Yes | The transaction callback engine is wrapped. |
 | Raw SQL, config, migrations, jobs, eval/code capture, health/stats | No | These are infrastructure/admin surfaces; use `classifyOperation` or `classifyEngineMethod` to opt in explicitly. |
-| A stock `gbrain serve` or `gbrain` CLI process | No | GBrain does not load psy automatically; the host must import and apply `psy-core/gbrain`. |
-| Internal side effects inside one GBrain operation | One row | psy records the operation boundary, not every private engine call unless the host wraps the engine too. |
+| A stock `gbrain serve` or `gbrain` CLI process | No | GBrain does not load psy-core automatically; the host must import and apply `psy-core/gbrain`. |
+| Internal side effects inside one GBrain operation | One row | psy-core records the operation boundary, not every private engine call unless the host wraps the engine too. |
 | Hermes/OpenClaw/MemoryProvider plugin activity | No | Use the dedicated plugin or adapter for that surface. |
 
 For live adapter validation against a local GBrain checkout:
@@ -251,27 +249,29 @@ For live adapter validation against a local GBrain checkout:
 PSY_GBRAIN_REAL_REPO=/path/to/gbrain npm run test:gbrain:live
 ```
 
-This runs the real PGLite `BrainEngine` through psy's SQLite-backed audit store, then uses Bun to invoke GBrain's real `operations.ts` boundary with an in-memory capture store. The split exists because GBrain's operation module uses Bun/WASM imports, while psy's SQLite store depends on Node `better-sqlite3`.
-
 ### Hermes Agent
+
+Hermes writes to `MEMORY.md`, `USER.md`, and skills are observed from the Python process and streamed into `psy ingest`.
 
 ```bash
 pip install psy-core-hermes
-psy-core-hermes init --actor-id you@example.com
+psy-core-hermes trust-layer --actor-id you@example.com
 ```
 
-Hermes writes to `MEMORY.md`, `USER.md`, and skills are observed from the Python process and streamed into `psy ingest`. See [`python/psy-core-hermes`](python/psy-core-hermes/README.md) and [`examples/hermes-agent`](examples/hermes-agent/README.md).
+See [python/psy-core-hermes](python/psy-core-hermes/README.md) and [examples/hermes-agent](examples/hermes-agent/README.md).
 
 ### OpenClaw
 
+The OpenClaw plugin observes tool calls that touch `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, `skill_workshop`, `memory-lancedb`, and `memory-wiki` surfaces.
+
 ```bash
-openclaw plugins install ./plugins/psy-core-openclaw
+openclaw plugins install psy-core-openclaw
 openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "you@example.com"
 openclaw gateway restart
 ```
 
-The OpenClaw plugin observes tool calls that touch `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, `skill_workshop`, `memory-lancedb`, and `memory-wiki` surfaces. It writes paired psy audit envelopes directly from OpenClaw plugin hooks without shelling out to a `psy` binary. See [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md).
+See [plugins/psy-core-openclaw](plugins/psy-core-openclaw/README.md).
 
 ## Provider Discovery
 
@@ -293,6 +293,20 @@ for (const provider of listProviders()) {
 ```
 
 The registry is stored on `globalThis`, so separately bundled adapter subpaths share one provider map inside a process.
+
+## CLI Quick Reference
+
+| Task | Command |
+|---|---|
+| Create config, store, archives, and seal key | `psy init` |
+| Seal an existing unsealed DB tail | `psy init --migrate` |
+| Watch current and future rows | `psy tail` |
+| Emit machine-readable rows | `psy tail --json` |
+| Query by identity or operation | `psy query --actor user_123 --operation str_replace` |
+| Verify active DB, archives, and seal | `psy verify --all` |
+| Skip seal verification explicitly | `psy verify --no-seal` |
+| Export active rows | `psy export --format jsonl` |
+| Append events from non-Node observers | `psy ingest` |
 
 ## Configuration
 
@@ -326,13 +340,15 @@ Useful environment variables:
 
 ## Guarantees and Limits
 
-**Tamper-evident, not tamper-proof.** psy detects row edits, row reordering, sequence gaps, broken hashes, meta-head mismatch, orphaned intent rows, archive mismatch, and sealed-tail mismatch. It does not stop an attacker from deleting all local files.
+**Tamper-evident, not tamper-proof.** psy-core detects row edits, row reordering, sequence gaps, broken hashes, meta-head mismatch, orphaned intent rows, archive mismatch, and sealed-tail mismatch. It does not stop an attacker from deleting all local files.
 
-**Fail-closed wrapper path.** If psy cannot write the intent row, the wrapped handler does not run. If the result row cannot be written after the handler runs, verification can still flag the orphaned intent.
+**Fail-closed wrapper path.** If psy-core cannot write the intent row, the wrapped handler does not run. If the result row cannot be written after the handler runs, verification can still flag the orphaned intent.
 
 **Best-effort redaction.** Built-in redaction catches common OpenAI, Anthropic, AWS, Google, GitHub, Bearer, JWT, and PEM secret patterns. Treat previews as operational diagnostics, not a DLP boundary.
 
 **Runtime assumptions.** psy-core is Node 20+ and ESM-only. `runWithContext` uses `AsyncLocalStorage` in normal Node async chains. Edge runtimes and worker threads are outside the current support scope.
+
+For the full threat model, use [SECURITY.md](SECURITY.md).
 
 ## Docs by Goal
 
@@ -340,12 +356,14 @@ Useful environment variables:
 |---|---|
 | Audit a TypeScript/Node agent | [Quick Install](#quick-install) and [Adapter Notes](#adapter-notes) |
 | Audit GBrain | [GBrain](#gbrain) |
-| Audit Hermes Agent | [`python/psy-core-hermes`](python/psy-core-hermes/README.md) |
-| Audit OpenClaw | [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md) |
-| Try the Hermes integration end to end | [`examples/hermes-agent`](examples/hermes-agent/README.md) |
-| Understand integrity checks | [How the Chain Works](#how-the-chain-works) and [Guarantees and Limits](#guarantees-and-limits) |
+| Audit Hermes Agent | [python/psy-core-hermes](python/psy-core-hermes/README.md) |
+| Audit OpenClaw | [plugins/psy-core-openclaw](plugins/psy-core-openclaw/README.md) |
+| Try the Hermes integration end to end | [examples/hermes-agent](examples/hermes-agent/README.md) |
+| Understand integrity checks | [The Audit Loop](#the-audit-loop) and [Guarantees and Limits](#guarantees-and-limits) |
 | Wire a non-Node observer | `psy ingest` in [CLI Quick Reference](#cli-quick-reference) |
 | Inspect provider coverage | [Provider Discovery](#provider-discovery) |
+| Give an agent repo context | [AGENTS.md](AGENTS.md) |
+| Give an LLM the doc map | [llms.txt](llms.txt) |
 
 ## Repository Map
 
@@ -354,8 +372,10 @@ Useful environment variables:
 | `src/` | TypeScript audit engine, CLI, store, verifier, and Node adapters |
 | `python/psy-core-hermes/` | Hermes Agent Python plugin |
 | `plugins/psy-core-openclaw/` | OpenClaw plugin for memory and skill audit hooks |
-| `examples/hermes-agent/` | Local walkthrough for Hermes plus psy |
+| `examples/hermes-agent/` | Local walkthrough for Hermes plus psy-core |
 | `.github/workflows/` | Node, Python, publish, and cross-language e2e workflows |
+| `AGENTS.md` | Agent-facing contributor instructions |
+| `llms.txt` | Compact LLM documentation map |
 
 ## Development
 
@@ -372,7 +392,7 @@ GBrain live validation expects a local GBrain checkout and Bun:
 PSY_GBRAIN_REAL_REPO=/path/to/gbrain npm run test:gbrain:live
 ```
 
-Python adapter tests live under [`python/psy-core-hermes`](python/psy-core-hermes/README.md).
+Hermes plugin tests live under [python/psy-core-hermes](python/psy-core-hermes/README.md).
 
 ## License
 

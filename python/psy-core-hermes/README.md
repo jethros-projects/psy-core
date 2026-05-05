@@ -1,20 +1,23 @@
 # psy-core-hermes
 
-> Audit receipts for Hermes Agent memory and skills.
-> Keep the learning loop alive, but make every durable write inspectable.
+Hermes learns by rewriting durable files. psy-core-hermes gives those changes receipts.
 
-[![PyPI](https://img.shields.io/pypi/v/psy-core-hermes.svg)](https://pypi.org/project/psy-core-hermes/)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/psy-core-hermes?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/psy-core-hermes)
-[![Python](https://img.shields.io/pypi/pyversions/psy-core-hermes.svg)](https://pypi.org/project/psy-core-hermes/)
-[![License](https://img.shields.io/pypi/l/psy-core-hermes.svg)](https://github.com/jethros-projects/psy-core/blob/main/LICENSE)
+Package: [`psy-core-hermes`](https://pypi.org/project/psy-core-hermes/). Core: [psy-core](../../README.md). Example: [Hermes lab](../../examples/hermes-agent/README.md). Upstream: [Hermes Agent](https://github.com/NousResearch/hermes-agent). Issues: [GitHub Issues](https://github.com/jethros-projects/psy-core/issues).
 
-[PyPI](https://pypi.org/project/psy-core-hermes/) | [psy-core](../../README.md) | [Hermes example](../../examples/hermes-agent/README.md) | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | [Issues](https://github.com/jethros-projects/psy-core/issues)
+Hermes is built to improve itself. It saves memories, updates user profiles, creates skills, and patches those skills as recurring work gets clearer. That learning loop is the magic. It is also the reason durable writes need an audit trail.
 
-**psy-core-hermes is the Hermes Agent adapter for [psy-core](https://github.com/jethros-projects/psy-core).** Hermes is built to learn: it saves memories, updates user profiles, creates skills, and patches those skills as it gets better at recurring work. psy-core-hermes records those durable changes into a tamper-evident audit chain.
+**psy-core-hermes is the Hermes Agent plugin for [psy-core](https://github.com/jethros-projects/psy-core).** It listens at the Hermes tool boundary, watches the file-backed memory directory, and streams canonical audit envelopes into `psy ingest`. The Node `psy` verifier then writes the same SQLite hash chain and HMAC-sealed head used by every psy-core integration.
 
-It does not replace Hermes memory. It does not become your MemoryProvider. It is a plugin observer that listens at the tool boundary, watches the file-backed memory directory, and streams canonical audit envelopes into `psy ingest`.
+It does not replace Hermes memory. It does not become your MemoryProvider. Hermes keeps improving in the normal way. You get a verifiable trail of what changed.
 
-The result is simple: Hermes keeps improving, and you get a verifiable trail of what changed.
+> **Five minutes to a trust layer.** Install the package, run `trust-layer`, restart Hermes, and watch paired `intent` / `result` rows land with `psy tail`.
+
+## Who This Is For
+
+- **Hermes operators** who want memory and skill changes to be inspectable after the fact.
+- **Agent builders** who need Hermes to keep learning without switching memory providers.
+- **Teams running persistent agents** who need to answer what changed, when, and under which actor.
+- **Security-minded users** who want tamper-evident local receipts before making larger governance claims.
 
 ## Quick Install
 
@@ -23,8 +26,7 @@ pip install psy-core-hermes
 psy-core-hermes trust-layer --actor-id you@example.com
 ```
 
-That command configures the plugin, installs the local Hermes skill
-`psy-core-trust-layer`, runs `doctor`, and runs `psy verify --all`.
+That command configures the plugin, installs the local Hermes skill `psy-core-trust-layer`, runs `doctor`, and runs `psy verify --all`.
 
 Then restart Hermes:
 
@@ -37,9 +39,6 @@ Inside Hermes, ask:
 ```text
 Use the psy-core trust layer skill to verify my setup.
 ```
-
-Use psy-core as the trust layer for Hermes's self-improvement loop.
-Hermes's magic is that it learns. psy-core's value is making that learning accountable.
 
 In another terminal:
 
@@ -56,6 +55,29 @@ psy verify --all
 The smaller `psy-core-hermes init --actor-id you@example.com` command is still
 available when you only want idempotent config insertion.
 
+## See It Work
+
+```text
+Hermes: save that Alice prefers short incident summaries.
+
+psy:    intent  operation=create actor=you@example.com path=MEMORY.md
+
+Hermes: writes the memory file
+
+psy:    result  status=success hash=... prev_hash=...
+
+You:    psy query --actor you@example.com
+
+psy:    shows the attempted memory write, confirmed result, session,
+        timestamp, redacted preview, and chain position
+
+You:    psy verify --all
+
+psy:    active DB, archives, orphan checks, and sealed tail agree
+```
+
+Hermes keeps the learning loop. psy-core-hermes gives the loop receipts.
+
 ## Why This Exists
 
 Hermes memory is valuable because it persists. That persistence is also why it deserves an audit trail.
@@ -68,9 +90,9 @@ Use psy-core-hermes when you want to answer questions like:
 - Did a skill churn through several rapid patches after creation?
 - Has the audit log been edited, reordered, or truncated since it was written?
 
-The adapter gives operators receipts without forcing Hermes into a new memory backend.
+The plugin gives operators receipts without forcing Hermes into a new memory backend.
 
-## How It Works
+## The Hermes Audit Loop
 
 ```text
 Hermes Agent process                        psy-core audit process
@@ -89,7 +111,7 @@ filesystem watcher / post_tool_call ------>  psy ingest writes result row
                                              HMAC sealed head is advanced
 ```
 
-The Python plugin owns observation. The Node `psy` CLI owns the canonical audit chain. That split keeps one verifier for every psy adapter, whether events originate from TypeScript, Python, or another language.
+The Python plugin owns observation. The Node `psy` CLI owns the canonical audit chain. That split keeps one verifier for every psy-core integration, whether events originate from TypeScript, Python, or another language.
 
 ## What Gets Captured
 
@@ -310,7 +332,7 @@ The stats path opens SQLite read-only.
 
 | Goal | Where to go |
 |---|---|
-| Try the adapter quickly | [`../../examples/hermes-agent`](../../examples/hermes-agent/README.md) |
+| Try the plugin quickly | [`../../examples/hermes-agent`](../../examples/hermes-agent/README.md) |
 | Understand the core audit chain | [Root psy-core README](../../README.md) |
 | See generated Hermes config | [`../../examples/hermes-agent/hermes-config.yaml`](../../examples/hermes-agent/hermes-config.yaml) |
 | Debug install issues | `psy-core-hermes doctor` |
@@ -340,8 +362,8 @@ Source verification covers Hermes Agent v0.11.0 (`v2026.4.23`) and v0.12.0 (`v20
 
 ## Security Notes
 
-- The adapter records durable memory writes; it does not approve or deny Hermes tool calls.
-- Payload capture is enabled by default for the Hermes adapter so memory content previews are useful. Built-in redaction catches common secret patterns, but it is not a DLP system.
+- The plugin records durable memory writes; it does not approve or deny Hermes tool calls.
+- Payload capture is enabled by default for the Hermes plugin so memory content previews are useful. Built-in redaction catches common secret patterns, but it is not a DLP system.
 - The seal key protects tail verification. Keep `seal_key_path` private and mode `0600`.
 - `psy verify --all` should be part of any incident review involving memory changes.
 - Use `allow_anonymous: true` only for local experiments.

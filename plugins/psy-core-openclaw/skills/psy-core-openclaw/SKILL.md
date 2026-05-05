@@ -6,7 +6,16 @@ metadata: {"openclaw":{"requires":{"config":["plugins.entries.psy-core.enabled"]
 
 # psy-core OpenClaw
 
-Use this skill after the `psy-core` plugin has been installed or enabled.
+Use this skill after the `psy-core` plugin has been installed or enabled. The job is to make OpenClaw's durable memory path inspectable without changing how OpenClaw works.
+
+## Success Criteria
+
+| Area | Good state |
+|---|---|
+| Plugin | Installed, enabled, and visible through `openclaw plugins inspect psy-core --json`. |
+| Identity | `actorId` set, unless the user explicitly chose anonymous local testing. |
+| Payloads | `payloadCapture` off unless the user asked for redacted previews. |
+| Chain | `psy verify --all` passes, or no events exist yet and no smoke test was approved. |
 
 ## Operating Checklist
 
@@ -48,3 +57,13 @@ Use this skill after the `psy-core` plugin has been installed or enabled.
   without the user's approval.
 - If the local plugin source is needed, read `AGENT_INSTALL.md` from the plugin
   root for the full install procedure.
+
+## Report Format
+
+```text
+psy-core-openclaw status:
+- plugin: <enabled | not enabled | not installed>
+- actorId: <value | missing>
+- payloadCapture: <false | true>
+- verification: <passed | no events yet | failed>
+```
