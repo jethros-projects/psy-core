@@ -1,12 +1,13 @@
 import path from 'node:path';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { query, verify } from '../src/index.js';
+import { init, query, verify, wrap } from '../src/index.js';
+import { loadConfig } from '../src/config.js';
 import { Sealer } from '../src/seal.js';
 import { PsyStore } from '../src/store.js';
-import { draft, initProject } from './helpers.js';
+import { draft, initProject, tempProject } from './helpers.js';
 
 const SEAL_ENV = ['PSY_HEAD_PATH', 'PSY_SEAL_KEY_PATH', 'PSY_SEAL_KEY'] as const;
 
@@ -17,6 +18,43 @@ afterEach(() => {
 });
 
 describe('public API', () => {
+  it('initializes the configured database path instead of only reporting it', async () => {
+    const cwd = await tempProject();
+    const result = await init({ cwd, dbPath: 'custom/audit.sqlite' });
+    const { config, paths } = await loadConfig({ cwd });
+
+    expect(result.databasePath).toBe(path.join(cwd, 'custom/audit.sqlite'));
+    expect(config.sqlite_path).toBe('custom/audit.sqlite');
+    expect(config.seal).toBe('required');
+    expect(paths.sqlitePath).toBe(result.databasePath);
+    expect(existsSync(result.databasePath)).toBe(true);
+  });
+
+  it('maps root wrap compatibility aliases onto the current identity fields', async () => {
+    const { paths, config } = await initProject();
+    const handlers = {
+      view: async () => 'view-result',
+      create: async () => 'create-result',
+      str_replace: async () => 'str_replace-result',
+      insert: async () => 'insert-result',
+      delete: async () => 'delete-result',
+      rename: async () => 'rename-result',
+    };
+    const audited = wrap(handlers, {
+      actor: 'legacy-actor',
+      runId: 'legacy-run',
+      configPath: paths.configPath,
+    });
+
+    await audited.view({ command: 'view', path: '/memories/a.md' });
+
+    const store = new PsyStore({ sqlitePath: paths.sqlitePath, archivesPath: paths.archivesPath, config });
+    const events = store.allActiveEvents();
+    store.close();
+    expect(events[0]?.actor_id).toBe('legacy-actor');
+    expect(events[0]?.session_id).toBe('legacy-run');
+  });
+
   it('queries stored bare operations with bare or legacy memory-prefixed filters', async () => {
     const { paths, config } = await initProject();
     const store = new PsyStore({ sqlitePath: paths.sqlitePath, archivesPath: paths.archivesPath, config });

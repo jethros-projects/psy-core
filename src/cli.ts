@@ -137,7 +137,11 @@ export function createProgram(io: IO = { stdout: process.stdout, stderr: process
     .option('--no-color', 'disable color')
     .action(async (opts: QueryFilters & { since?: string; json?: boolean; color?: boolean }) => {
       const store = await openStore();
-      const events = store.query({ ...opts, since: opts.since ? parseSince(opts.since) : undefined });
+      const events = store.query({
+        ...opts,
+        operation: operationVariants(opts.operation),
+        since: opts.since ? parseSince(opts.since) : undefined,
+      });
       if (opts.json) io.stdout.write(`${canonicalJson(events)}\n`);
       else if (events.length === 0) io.stdout.write('No events matched.\n');
       else events.forEach((event) => io.stdout.write(formatEvent(event, opts.color !== false)));
@@ -255,6 +259,8 @@ export function createProgram(io: IO = { stdout: process.stdout, stderr: process
 }
 
 export async function runCli(argv = process.argv, io?: IO): Promise<number> {
+  const previousExitCode = process.exitCode;
+  process.exitCode = undefined;
   try {
     await createProgram(io).parseAsync(argv, { from: 'node' });
     const exitCode = typeof process.exitCode === 'number' ? process.exitCode : 0;
@@ -269,6 +275,8 @@ export async function runCli(argv = process.argv, io?: IO): Promise<number> {
       if (error.code === 'E_CHAIN_BROKEN') return 1;
     }
     return 1;
+  } finally {
+    process.exitCode = previousExitCode;
   }
 }
 
@@ -355,6 +363,23 @@ function parseSince(value: string): Date {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new InvalidArgumentError('since must be ISO timestamp or duration like 7d');
   return date;
+}
+
+function normalizeOperation(operation: string | undefined): string | undefined {
+  return operation?.startsWith('memory.') ? operation.slice('memory.'.length) : operation;
+}
+
+function operationVariants(operation: QueryFilters['operation']): string[] | undefined {
+  if (operation === undefined) return undefined;
+  const variants = new Set<string>();
+  const operations = Array.isArray(operation) ? operation : [operation];
+  for (const value of operations) {
+    const normalized = normalizeOperation(value);
+    if (normalized === undefined) continue;
+    variants.add(normalized);
+    variants.add(`memory.${normalized}`);
+  }
+  return variants.size === 0 ? undefined : Array.from(variants);
 }
 
 function isDirectRun(): boolean {

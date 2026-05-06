@@ -42,6 +42,7 @@ describe('CLI', () => {
       config: project.config,
     });
     store.append(draft({ event_id: 'evt-create', operation_id: 'op-create', operation: 'create' }));
+    store.append(draft({ event_id: 'evt-legacy-create', operation_id: 'op-legacy-create', operation: 'memory.create' }));
     store.append(draft({ event_id: 'evt-view', operation_id: 'op-view', operation: 'view' }));
     store.close();
 
@@ -54,7 +55,10 @@ describe('CLI', () => {
 
       expect(code).toBe(0);
       expect(stderr.toString()).toBe('');
-      expect(events.map((event: { event_id: string }) => event.event_id)).toEqual(['evt-create']);
+      expect(events.map((event: { event_id: string }) => event.event_id)).toEqual([
+        'evt-create',
+        'evt-legacy-create',
+      ]);
     } finally {
       process.chdir(cwd);
     }
@@ -102,6 +106,33 @@ describe('CLI', () => {
       });
       expect(enforcedCode).toBe(1);
       expect(enforcedOut.toString()).toContain('seal_key_unavailable');
+    } finally {
+      process.exitCode = undefined;
+      process.chdir(cwd);
+    }
+  });
+
+  it('does not leak a failed command exit code into the next runCli call', async () => {
+    const cwd = process.cwd();
+    const project = await initProject();
+    process.chdir(project.cwd);
+    try {
+      const failedOut = new Capture();
+      const failedErr = new Capture();
+      const failed = await runCli(['node', 'psy', 'query', '--limit', '0'], {
+        stdout: failedOut,
+        stderr: failedErr,
+      });
+      expect(failed).toBe(1);
+
+      const okOut = new Capture();
+      const okErr = new Capture();
+      const ok = await runCli(['node', 'psy', 'verify', '--no-color'], {
+        stdout: okOut,
+        stderr: okErr,
+      });
+      expect(ok).toBe(0);
+      expect(process.exitCode).toBeUndefined();
     } finally {
       process.exitCode = undefined;
       process.chdir(cwd);

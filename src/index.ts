@@ -1,5 +1,5 @@
 import type { MemoryToolHandlers as AnthropicMemoryToolHandlers } from '@anthropic-ai/sdk/helpers/beta/memory';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -203,7 +203,7 @@ export function wrap(
   const identity =
     rest.identity ??
     (actor || runId
-      ? ({ actor, runId } as unknown as AuditIdentityInput)
+      ? ({ actorId: actor, sessionId: runId } satisfies Partial<import('./types.js').AuditIdentity>)
       : undefined);
 
   return wrapInternal(
@@ -217,12 +217,49 @@ export function wrap(
 }
 
 export async function init(options: InitOptions = {}): Promise<InitResult> {
-  const { created, paths } = await initConfig(options);
+  const initialized = await initConfig(options);
+  const configuredDbPath = options.dbPath ?? options.databasePath;
+  let paths = initialized.paths;
+  let config = initialized.config;
+  if (configuredDbPath) {
+    const sqlitePath = path.resolve(initialized.paths.projectRoot, configuredDbPath);
+    config = {
+      ...config,
+      sqlite_path: configuredDbPath,
+      archives_path: path.join(path.dirname(sqlitePath), 'archives'),
+    };
+    writeFileSync(initialized.paths.configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+    ({ config, paths } = await loadConfig({ configPath: initialized.paths.configPath }));
+  }
+
+  const store = new PsyStore({ sqlitePath: paths.sqlitePath, archivesPath: paths.archivesPath, config });
+  let migrated = false;
+  let markRequired = false;
+  try {
+    const sealPaths = sealPathsForStore(paths.sqlitePath);
+    const { sealer, keyCreated } = Sealer.bootstrap({
+      ...sealPaths,
+      envKey: process.env.PSY_SEAL_KEY,
+    });
+    const tail = store.lastEvent();
+    if (options.migrate && tail) {
+      sealer.writeHead(tail.seq, tail.event_hash, tail.timestamp);
+      migrated = true;
+    }
+    markRequired = (initialized.created || keyCreated) && config.seal !== 'required';
+  } finally {
+    store.close();
+  }
+  if (markRequired) {
+    const updated = { ...config, seal: 'required' as const };
+    writeFileSync(paths.configPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+  }
+
   return {
-    databasePath: options.dbPath ?? options.databasePath ?? paths.sqlitePath,
-    created,
-    migrated: Boolean(options.migrate),
-    migrationsApplied: 0,
+    databasePath: paths.sqlitePath,
+    created: initialized.created,
+    migrated,
+    migrationsApplied: migrated ? 1 : 0,
   };
 }
 

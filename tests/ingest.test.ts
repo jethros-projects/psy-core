@@ -7,6 +7,7 @@ import {
   parseIngestLineOrThrow,
   type IngestEnvelope,
 } from '../src/ingest.js';
+import { Sealer, defaultSealPaths } from '../src/seal.js';
 import { openTempStore } from './helpers.js';
 
 describe('parseIngestLine', () => {
@@ -128,6 +129,8 @@ describe('appendFromEnvelope', () => {
       const events = store.query({ actor: 'bob' });
       expect(events).toHaveLength(1);
       expect(events[0]?.payload_preview).toContain('REDACTED-anthropic-key');
+      expect(events[0]?.payload_redacted).toBe(true);
+      expect(events[0]?.redactor_id).toBe('default-regex-v1');
     } finally {
       store.close();
     }
@@ -148,6 +151,29 @@ describe('appendFromEnvelope', () => {
       });
       const events = store.query({ actor: 'carol' });
       expect(events[0]?.payload_preview).toContain(sentinel);
+      expect(events[0]?.payload_redacted).toBe(false);
+      expect(events[0]?.redactor_id).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+
+  it('keeps external observer source metadata in the captured payload', async () => {
+    const { store } = await openTempStore();
+    try {
+      await appendFromEnvelope(store, {
+        type: 'intent',
+        operation: 'create',
+        call_id: 'call-source',
+        identity: { actor_id: 'observer' },
+        memory_path: '/memories/MEMORY.md',
+        source: 'psy-core-hermes',
+      });
+
+      const event = store.query({ actor: 'observer' })[0];
+      const payload = event?.payload_preview ? JSON.parse(event.payload_preview) : null;
+
+      expect(payload?.__psy_ingest).toEqual({ source: 'psy-core-hermes' });
     } finally {
       store.close();
     }
@@ -184,6 +210,34 @@ describe('appendFromEnvelope', () => {
       expect(events).toHaveLength(1);
       expect(events[0]?.outcome).toBe('unattributed');
       expect(events[0]?.audit_phase).toBe('result');
+    } finally {
+      store.close();
+    }
+  });
+
+  it('refuses to re-seal an existing required-seal chain during ingest', async () => {
+    const { store } = await openTempStore({ seal: 'required' });
+    try {
+      store.appendIntent({
+        operation: 'create',
+        callId: 'already-written',
+        identity: { actorId: 'alice' },
+      });
+      const sealer = Sealer.bootstrap(defaultSealPaths(store.sqlitePath)).sealer;
+
+      const ack = await appendFromEnvelope(
+        store,
+        {
+          type: 'intent',
+          operation: 'create',
+          call_id: 'next-write',
+          identity: { actor_id: 'alice' },
+        },
+        { sealer },
+      );
+
+      expect(ack.ok).toBe(false);
+      expect(ack.error?.message).toContain('seal as required');
     } finally {
       store.close();
     }

@@ -106,6 +106,12 @@ export interface IngestOptions {
   sealer?: Sealer | null;
 }
 
+interface CapturedPayload {
+  value: unknown;
+  redacted: boolean;
+  redactorId: string | null;
+}
+
 /**
  * Parse one JSONL line into an envelope. Returns either the validated
  * envelope or a structured error suitable for emitting as an ACK line.
@@ -152,7 +158,11 @@ export async function appendFromEnvelope(
   envelope: IngestEnvelope,
   options: IngestOptions = {},
 ): Promise<IngestAck> {
-  const payload = await capturePayload(envelope, options);
+  const capturedPayload = await capturePayload(envelope, store.config.payload_capture.max_bytes, options);
+  const payload = {
+    ...capturedPayload,
+    value: attachIngestMetadata(capturedPayload.value, envelope.source),
+  };
   const identity = envelope.identity
     ? {
         actorId: envelope.identity.actor_id ?? null,
@@ -174,7 +184,9 @@ export async function appendFromEnvelope(
         identity,
         memoryPath: envelope.memory_path,
         purpose: envelope.purpose,
-        payload,
+        payload: payload.value,
+        payloadRedacted: payload.redacted,
+        redactorId: payload.redactorId,
       });
     } else {
       event = store.appendResult({
@@ -184,7 +196,9 @@ export async function appendFromEnvelope(
         identity,
         memoryPath: envelope.memory_path,
         purpose: envelope.purpose,
-        payload,
+        payload: payload.value,
+        payloadRedacted: payload.redacted,
+        redactorId: payload.redactorId,
         outcome: envelope.outcome,
       });
     }
@@ -216,7 +230,20 @@ function assertSealMatchesTail(store: PsyStore, sealer: Sealer): void {
   if (!head) {
     // Migration path: an existing v0.1 DB with rows but no head pointer.
     const tail = store.lastEvent();
-    if (tail) sealer.writeHead(tail.seq, tail.event_hash);
+    if (tail) {
+      if (store.config.seal === 'required') {
+        throw new PsyChainBroken(
+          'Config marks seal as required but no sealed head pointer was found. Refusing to re-seal an existing chain.',
+          {
+            details: {
+              db_seq: tail.seq,
+              db_event_hash: tail.event_hash,
+            },
+          },
+        );
+      }
+      sealer.writeHead(tail.seq, tail.event_hash);
+    }
     return;
   }
   const tail = store.lastEvent();
@@ -237,35 +264,85 @@ function assertSealMatchesTail(store: PsyStore, sealer: Sealer): void {
   }
 }
 
-async function capturePayload(envelope: IngestEnvelope, options: IngestOptions): Promise<unknown> {
-  if (envelope.payload === undefined || envelope.payload === null) return null;
-  if (envelope.redact_payload === false) return envelope.payload;
+async function capturePayload(
+  envelope: IngestEnvelope,
+  maxChars: number,
+  options: IngestOptions,
+): Promise<CapturedPayload> {
+  if (envelope.payload === undefined || envelope.payload === null) {
+    return { value: null, redacted: false, redactorId: null };
+  }
+  if (envelope.redact_payload === false) {
+    return { value: truncateJsonStrings(envelope.payload, maxChars), redacted: false, redactorId: null };
+  }
   // Default: redact strings inside the payload via the configured redactor.
   // Server-side redaction provides defense-in-depth; the Python observer
   // already runs an equivalent regex tier before stdio crossing.
   const redactor = options.redactor === undefined ? defaultRegexRedactor : options.redactor;
-  if (!redactor) return envelope.payload;
-  return redactInPlace(envelope.payload, redactor);
+  if (!redactor) {
+    return { value: truncateJsonStrings(envelope.payload, maxChars), redacted: false, redactorId: null };
+  }
+  const result = await redactInPlace(envelope.payload, redactor, maxChars);
+  return { value: result.value, redacted: result.redacted, redactorId: redactor.id };
 }
 
-async function redactInPlace(value: unknown, redactor: Redactor): Promise<unknown> {
+async function redactInPlace(value: unknown, redactor: Redactor, maxChars: number): Promise<CapturedPayload> {
   if (typeof value === 'string') {
-    const { content } = await redactor.redact(value);
-    return content;
+    const { content, redacted } = await redactor.redact(truncateString(value, maxChars));
+    return { value: content, redacted, redactorId: redactor.id };
   }
   if (Array.isArray(value)) {
     const out: unknown[] = [];
-    for (const item of value) out.push(await redactInPlace(item, redactor));
-    return out;
+    let redacted = false;
+    for (const item of value) {
+      const result = await redactInPlace(item, redactor, maxChars);
+      out.push(result.value);
+      redacted ||= result.redacted;
+    }
+    return { value: out, redacted, redactorId: redactor.id };
   }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
+    let redacted = false;
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = await redactInPlace(child, redactor);
+      const result = await redactInPlace(child, redactor, maxChars);
+      out[key] = result.value;
+      redacted ||= result.redacted;
     }
-    return out;
+    return { value: out, redacted, redactorId: redactor.id };
+  }
+  return { value, redacted: false, redactorId: redactor.id };
+}
+
+function truncateJsonStrings(value: unknown, maxChars: number): unknown {
+  if (typeof value === 'string') return truncateString(value, maxChars);
+  if (Array.isArray(value)) return value.map((item) => truncateJsonStrings(item, maxChars));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, truncateJsonStrings(child, maxChars)]),
+    );
   }
   return value;
+}
+
+function truncateString(value: string, maxChars: number): string {
+  const limit = Number.isFinite(maxChars) ? Math.max(0, Math.trunc(maxChars)) : 512;
+  return value.length > limit ? value.slice(0, limit) : value;
+}
+
+function attachIngestMetadata(value: unknown, source: string | undefined): unknown {
+  if (!source) return value;
+  const metadata = { source };
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return {
+      ...(value as Record<string, unknown>),
+      __psy_ingest: metadata,
+    };
+  }
+  return {
+    value,
+    __psy_ingest: metadata,
+  };
 }
 
 export type AppendFromEnvelope = typeof appendFromEnvelope;

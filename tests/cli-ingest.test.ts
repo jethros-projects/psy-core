@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { runCli } from '../src/cli.js';
@@ -17,6 +19,8 @@ class Capture {
 }
 
 const REPO_ROOT = path.resolve(new URL('../', import.meta.url).pathname);
+const require = createRequire(import.meta.url);
+const TSX_IMPORT = pathToFileURL(require.resolve('tsx')).href;
 
 interface RunResult {
   code: number;
@@ -31,8 +35,8 @@ async function runIngestSubprocess(
 ): Promise<RunResult> {
   return new Promise<RunResult>((resolve, reject) => {
     const child = spawn(
-      'npx',
-      ['tsx', path.join(REPO_ROOT, 'src/cli.ts'), 'ingest'],
+      process.execPath,
+      ['--import', TSX_IMPORT, path.join(REPO_ROOT, 'src/cli.ts'), 'ingest'],
       {
         cwd,
         env: {
