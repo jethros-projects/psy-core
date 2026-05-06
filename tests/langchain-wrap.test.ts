@@ -141,6 +141,17 @@ describe('langchain wrap', () => {
     ]);
   });
 
+  it('escapes the session id in synthetic paths', async () => {
+    const { paths, config } = await initProject();
+    const target = stubHistory();
+    const audited = wrap(target, { actorId: 'tester', sessionId: 'team/a b', configPath: paths.configPath });
+
+    await audited.getMessages();
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe('langchain://sessions/team%2Fa%20b/messages');
+  });
+
   it('does not advance the message counter for an empty bulk append', async () => {
     const { paths, config } = await initProject();
     const target = stubHistory();
@@ -150,7 +161,25 @@ describe('langchain wrap', () => {
     await audited.addMessage(message('first actual message'));
 
     const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
-    expect(intents[1]?.memory_path).toBe('langchain://sessions/s1/messages/1');
+    expect(intents.map((e) => e.memory_path)).toEqual(['langchain://sessions/s1/messages/1']);
+  });
+
+  it('does not advance the message counter when a bulk append fails', async () => {
+    const { paths, config } = await initProject();
+    const target = stubHistory();
+    const error = new Error('bulk write failed');
+    target.addMessages.mockRejectedValueOnce(error);
+    const audited = wrap(target, { actorId: 'tester', sessionId: 's1', configPath: paths.configPath });
+
+    await expect(audited.addMessages([message('lost')])).rejects.toBe(error);
+    await audited.addMessage(message('first persisted'));
+
+    const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
+    expect(intents.map((e) => e.memory_path)).toEqual([
+      'langchain://sessions/s1/messages/1+0',
+      'langchain://sessions/s1/messages/1',
+    ]);
+    expect(intents[0]?.outcome).toBe('success');
   });
 
   it('promotes the LangChain sessionId to the audit Identity.sessionId field', async () => {

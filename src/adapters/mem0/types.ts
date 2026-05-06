@@ -107,6 +107,9 @@ export interface Mem0Client {
    */
   update(memoryId: string, body: Mem0UpdateBody | string): Promise<Mem0Memory[] | Mem0Memory>;
   delete(memoryId: string): Promise<unknown>;
+  deleteAll?(options?: Mem0EntityOptions): Promise<unknown>;
+  batchUpdate?(memories: unknown, options?: unknown): Promise<unknown>;
+  batchDelete?(memoryIds: unknown, options?: unknown): Promise<unknown>;
   history(memoryId: string): Promise<unknown>;
   [extra: string]: unknown;
 }

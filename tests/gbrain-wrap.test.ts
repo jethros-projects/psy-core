@@ -317,6 +317,18 @@ describe('gbrain operations wrap', () => {
     expect(await readEvents(paths, config)).toHaveLength(0);
   });
 
+  it('fails closed when an unknown GBrain operation declares write scope', async () => {
+    const { paths, config } = await initProject();
+    const handler = vi.fn(async () => ({ ok: true }));
+    const [wrapped] = wrapOperations([
+      operation('new_memory_write', handler, { scope: 'write', mutating: true }),
+    ], { actorId: 'tester', configPath: paths.configPath });
+
+    await expect(wrapped.handler({ brainId: 'host' }, {})).rejects.toBeInstanceOf(PsyConfigInvalid);
+    expect(handler).not.toHaveBeenCalled();
+    expect(await readEvents(paths, config)).toHaveLength(0);
+  });
+
   it('supports custom operation classification, identity, purpose, and explicit skip', async () => {
     const { paths, config } = await initProject();
     const custom = wrapOperation(operation('bespoke'), {

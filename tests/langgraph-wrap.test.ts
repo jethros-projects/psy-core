@@ -233,6 +233,19 @@ describe('langgraph wrap', () => {
     expect(events[0]?.memory_path).toBe('langgraph://threads/t1/my-ns/cp_x');
   });
 
+  it('escapes synthetic path segments from config ids', async () => {
+    const { paths, config } = await initProject();
+    const target = stubSaver();
+    const audited = wrap(target, { actorId: 'tester', configPath: paths.configPath });
+
+    await audited.getTuple({
+      configurable: { thread_id: 'thread/a b', checkpoint_ns: 'ns/x', checkpoint_id: 'cp/y' },
+    });
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe('langgraph://threads/thread%2Fa%20b/ns%2Fx/cp%2Fy');
+  });
+
   it('passes through unwrapped methods', async () => {
     const { paths } = await initProject();
     const target = stubSaver();

@@ -147,6 +147,17 @@ describe('mastra wrap (threads)', () => {
     const events = await readEvents(paths, config);
     expect(events[0]?.memory_path).toBe('mastra://threads/resource:res_42');
   });
+
+  it('escapes synthetic path segments from thread ids', async () => {
+    const { paths, config } = await initProject();
+    const target = stubMemory();
+    const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
+
+    await audited.createThread({ resourceId: 'res_1', threadId: 'thread/a b' });
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe('mastra://threads/thread%2Fa%20b');
+  });
 });
 
 describe('mastra wrap (messages)', () => {

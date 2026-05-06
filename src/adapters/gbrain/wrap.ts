@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Auditor, resolveIdentity, summarizeError } from '../../auditor.js';
+import { PsyConfigInvalid } from '../../errors.js';
 import { sha256Hex } from '../../hash.js';
 import type { AuditIdentityInput, MemoryPathSet, WrapOptions } from '../../types.js';
 
@@ -239,6 +240,12 @@ function operationClassification(
   const name = operation.name;
   const c = classifyOperationByName(name, params, brainId);
   if (c) return maybeSkipRead(c, operation.scope, options);
+  if (isUnclassifiedWriteOperation(operation)) {
+    throw new PsyConfigInvalid(
+      `GBrain operation "${operation.name}" is write-like but psy-core does not classify it. Add an explicit classifyOperation override or update psy-core/gbrain.`,
+      { details: { operation: operation.name, scope: operation.scope, mutating: operation.mutating } },
+    );
+  }
   return SKIP;
 }
 
@@ -266,6 +273,10 @@ function maybeSkipRead(
   if (options.auditReads === false) return SKIP;
   if (scope === 'admin' && options.auditAdminReads === false) return SKIP;
   return c;
+}
+
+function isUnclassifiedWriteOperation(operation: GBrainOperation): boolean {
+  return operation.scope === 'write';
 }
 
 function defaultOperationIdentity(ctx: GBrainOperationContext): AuditIdentityInput | undefined {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Auditor, resolveIdentity, summarizeError } from '../../auditor.js';
+import { pathSegment } from '../../path-segment.js';
 import type { WrapOptions } from '../../types.js';
 
 import {
@@ -107,6 +108,25 @@ function wrapAgentBlocks(target: AgentBlocksResource, options: WrapOptions): Age
         run: () => target.update(blockLabel, body, callOpts),
       });
     },
+    async attach(blockId: string, params: { agent_id: string }, callOpts?: unknown): Promise<unknown> {
+      const auditor = await getAuditor();
+      return runAudited<unknown>(auditor, options, {
+        operation: 'create',
+        memoryPath: agentBlockIdPath(params.agent_id, blockId),
+        run: () => target.attach(blockId, params, callOpts),
+      });
+    },
+    async detach(blockId: string, params: { agent_id: string }, callOpts?: unknown): Promise<unknown> {
+      const auditor = await getAuditor();
+      if (typeof target.detach !== 'function') {
+        throw new TypeError('target.detach is not available on this Letta agent blocks resource');
+      }
+      return runAudited<unknown>(auditor, options, {
+        operation: 'delete',
+        memoryPath: agentBlockIdPath(params.agent_id, blockId),
+        run: () => target.detach!(blockId, params, callOpts),
+      });
+    },
   };
 
   return new Proxy(target, {
@@ -176,16 +196,20 @@ async function runAudited<T>(auditor: Auditor, options: WrapOptions, call: Audit
 }
 
 function globalPathFromId(blockId: string): string {
-  return `${LETTA_GLOBAL_PATH_PREFIX}${blockId}`;
+  return `${LETTA_GLOBAL_PATH_PREFIX}${pathSegment(blockId)}`;
 }
 
 function globalPathFromCreate(body: BlockCreateBody): string {
   // No id is known until the server responds; use the provided label so the
   // intent row carries a meaningful identifier. The result row records the
   // same path; consumers cross-reference via the call_id.
-  return `${LETTA_GLOBAL_PATH_PREFIX}label:${body.label}`;
+  return `${LETTA_GLOBAL_PATH_PREFIX}label:${pathSegment(body.label)}`;
 }
 
 function agentPath(agentId: string, blockLabel: string): string {
-  return `${LETTA_AGENT_PATH_PREFIX}${agentId}/blocks/${blockLabel}`;
+  return `${LETTA_AGENT_PATH_PREFIX}${pathSegment(agentId)}/blocks/${pathSegment(blockLabel)}`;
+}
+
+function agentBlockIdPath(agentId: string, blockId: string): string {
+  return `${LETTA_AGENT_PATH_PREFIX}${pathSegment(agentId)}/blocks/id:${pathSegment(blockId)}`;
 }

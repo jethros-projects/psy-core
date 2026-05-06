@@ -23,6 +23,9 @@ function stubClient(): Mem0Client & {
   getAll: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
+  deleteAll: ReturnType<typeof vi.fn>;
+  batchUpdate: ReturnType<typeof vi.fn>;
+  batchDelete: ReturnType<typeof vi.fn>;
   history: ReturnType<typeof vi.fn>;
   ping: ReturnType<typeof vi.fn>;
 } {
@@ -33,6 +36,9 @@ function stubClient(): Mem0Client & {
     getAll: vi.fn(async () => ({ results: [memory()] })),
     update: vi.fn(async (id: string) => [memory({ id })]),
     delete: vi.fn(async () => ({ message: 'ok' })),
+    deleteAll: vi.fn(async () => ({ message: 'deleted all' })),
+    batchUpdate: vi.fn(async () => ({ message: 'updated batch' })),
+    batchDelete: vi.fn(async () => ({ message: 'deleted batch' })),
     history: vi.fn(async () => ({ history: [] })),
     ping: vi.fn(async () => ({ ok: true })),
   } as unknown as ReturnType<typeof stubClient>;
@@ -138,6 +144,21 @@ describe('mem0 wrap', () => {
     expect(events[0]?.memory_path).toBe('mem0://users/u1/pending');
   });
 
+  it('escapes synthetic path segments from provider ids', async () => {
+    const { paths, config } = await initProject();
+    const client = stubClient();
+    const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
+
+    await audited.add([], { userId: 'tenant/a b' });
+    await audited.get('memory/with space');
+
+    const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
+    expect(intents.map((e) => e.memory_path)).toEqual([
+      'mem0://users/tenant%2Fa%20b/pending',
+      'mem0://memories/memory%2Fwith%20space',
+    ]);
+  });
+
   it('records distinct paths for scoped search, getAll, and history reads', async () => {
     const { paths, config } = await initProject();
     const client = stubClient();
@@ -179,6 +200,23 @@ describe('mem0 wrap', () => {
     const result = await (audited as unknown as { ping: () => Promise<unknown> }).ping();
     expect(result).toEqual({ ok: true });
     expect(client.ping).toHaveBeenCalledOnce();
+  });
+
+  it('audits bulk memory mutations once at the call boundary', async () => {
+    const { paths, config } = await initProject();
+    const client = stubClient();
+    const audited = wrap(client, { actorId: 'tester', configPath: paths.configPath });
+
+    await audited.deleteAll?.({ userId: 'u1' });
+    await audited.batchUpdate?.([{ id: 'm1', text: 'new' }, { id: 'm2', text: 'newer' }]);
+    await audited.batchDelete?.(['m1', 'm2', 'm3']);
+
+    const intents = (await readEvents(paths, config)).filter((e) => e.audit_phase === 'intent');
+    expect(intents.map((e) => `${e.operation}:${e.memory_path}`)).toEqual([
+      'delete:mem0://users/u1/all',
+      'str_replace:mem0://batch/update/2',
+      'delete:mem0://batch/delete/3',
+    ]);
   });
 
   it('binds pass-through methods to the original client', async () => {

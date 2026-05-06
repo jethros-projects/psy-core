@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Auditor, resolveIdentity, summarizeError } from '../../auditor.js';
+import { pathSegment } from '../../path-segment.js';
 import type { WrapOptions } from '../../types.js';
 
 import {
@@ -63,40 +64,50 @@ export function wrap<T extends LangChainChatMessageHistory>(
     },
     async addMessage(message: LangChainMessage) {
       const auditor = await getAuditor();
-      const idx = ++messageCounter;
-      return runAudited<void>(auditor, options, {
+      const idx = messageCounter + 1;
+      const result = await runAudited<void>(auditor, options, {
         operation: 'insert',
         memoryPath: messageIndexPath(options.sessionId, idx),
         run: () => history.addMessage(message),
       });
+      messageCounter = idx;
+      return result;
     },
     async addMessages(messages: LangChainMessage[]) {
+      if (messages.length === 0) {
+        return history.addMessages(messages);
+      }
       const auditor = await getAuditor();
       const startIdx = messageCounter + 1;
-      messageCounter += messages.length;
-      return runAudited<void>(auditor, options, {
+      const result = await runAudited<void>(auditor, options, {
         operation: 'insert',
         memoryPath: messageIndexPath(options.sessionId, `${startIdx}+${messages.length - 1}`),
         run: () => history.addMessages(messages),
       });
+      messageCounter += messages.length;
+      return result;
     },
     async addUserMessage(message: string) {
       const auditor = await getAuditor();
-      const idx = ++messageCounter;
-      return runAudited<void>(auditor, options, {
+      const idx = messageCounter + 1;
+      const result = await runAudited<void>(auditor, options, {
         operation: 'insert',
         memoryPath: messageIndexPath(options.sessionId, `user-${idx}`),
         run: () => history.addUserMessage(message),
       });
+      messageCounter = idx;
+      return result;
     },
     async addAIMessage(message: string) {
       const auditor = await getAuditor();
-      const idx = ++messageCounter;
-      return runAudited<void>(auditor, options, {
+      const idx = messageCounter + 1;
+      const result = await runAudited<void>(auditor, options, {
         operation: 'insert',
         memoryPath: messageIndexPath(options.sessionId, `ai-${idx}`),
         run: () => history.addAIMessage(message),
       });
+      messageCounter = idx;
+      return result;
     },
     async clear() {
       const auditor = await getAuditor();
@@ -175,7 +186,7 @@ async function runAudited<T>(auditor: Auditor, options: WrapOptions, call: Audit
 }
 
 function messagesBasePath(sessionId: string): string {
-  return `${LANGCHAIN_PATH_PREFIX}sessions/${sessionId}/messages`;
+  return `${LANGCHAIN_PATH_PREFIX}sessions/${pathSegment(sessionId)}/messages`;
 }
 
 function messageIndexPath(sessionId: string, idx: number | string): string {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Auditor, resolveIdentity, summarizeError } from '../../auditor.js';
 import { sha256Hex } from '../../hash.js';
+import { pathSegment } from '../../path-segment.js';
 import type { WrapOptions } from '../../types.js';
 
 import {
@@ -73,7 +74,7 @@ export function wrap<T extends MastraMemoryInstance>(memory: T, options: WrapOpt
       const auditor = await getAuditor();
       return runAudited(auditor, options, {
         operation: 'create',
-        memoryPath: threadPath(params.threadId ?? `resource:${params.resourceId}`),
+        memoryPath: params.threadId ? threadPath(params.threadId) : resourceThreadPath(params.resourceId),
         run: () => memory.createThread(params),
       });
     },
@@ -228,15 +229,19 @@ async function runAudited<T>(auditor: Auditor, options: WrapOptions, call: Audit
 
 function workingMemoryPath(params: ThreadIdParams): string {
   const scope = params.resourceId ?? params.threadId;
-  return `${MASTRA_PATH_PREFIX}working-memory/${scope}`;
+  return `${MASTRA_PATH_PREFIX}working-memory/${pathSegment(scope)}`;
 }
 
 function threadPath(threadId: string): string {
-  return `${MASTRA_PATH_PREFIX}threads/${threadId}`;
+  return `${MASTRA_PATH_PREFIX}threads/${pathSegment(threadId)}`;
+}
+
+function resourceThreadPath(resourceId: string | undefined): string {
+  return `${MASTRA_PATH_PREFIX}threads/resource:${pathSegment(resourceId)}`;
 }
 
 function messagesPath(threadId: string | undefined): string {
-  return `${MASTRA_PATH_PREFIX}messages/${threadId ?? 'unknown'}`;
+  return `${MASTRA_PATH_PREFIX}messages/${pathSegment(threadId)}`;
 }
 
 function semanticPath(resourceId: string, query: string): string {
@@ -246,11 +251,11 @@ function semanticPath(resourceId: string, query: string): string {
   // redactor. The full query is still recoverable from payload_preview when
   // capture is on. 16 hex chars = 64 bits, plenty for per-resource uniqueness.
   const queryHash = sha256Hex(query).slice(0, 16);
-  return `${MASTRA_PATH_PREFIX}semantic-recall/${resourceId}/${queryHash}`;
+  return `${MASTRA_PATH_PREFIX}semantic-recall/${pathSegment(resourceId)}/${queryHash}`;
 }
 
 function observationalPath(threadId: string, groupId: string): string {
-  return `${MASTRA_PATH_PREFIX}observational-memory/${threadId}/${groupId}`;
+  return `${MASTRA_PATH_PREFIX}observational-memory/${pathSegment(threadId)}/${pathSegment(groupId)}`;
 }
 
 function firstMessageThreadId(messages: ReadonlyArray<{ threadId?: string }>): string | undefined {
@@ -268,5 +273,5 @@ function deletedMessagesPath(
   }
   const first = input[0];
   const id = typeof first === 'string' ? first : first?.id;
-  return `${MASTRA_PATH_PREFIX}messages/by-id/${id ?? 'unknown'}${input.length > 1 ? `+${input.length - 1}` : ''}`;
+  return `${MASTRA_PATH_PREFIX}messages/by-id/${pathSegment(id)}${input.length > 1 ? `+${input.length - 1}` : ''}`;
 }

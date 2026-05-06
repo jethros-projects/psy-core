@@ -40,6 +40,7 @@ function stubAgentBlocks(): AgentBlocksResource & {
   retrieve: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   attach: ReturnType<typeof vi.fn>;
+  detach: ReturnType<typeof vi.fn>;
 } {
   return {
     retrieve: vi.fn(async (label: string, params) =>
@@ -49,6 +50,7 @@ function stubAgentBlocks(): AgentBlocksResource & {
       blockResponse({ id: `blk_${body.agent_id}_${label}`, label, value: body.value ?? 'kept' }),
     ),
     attach: vi.fn(async () => ({ ok: true })),
+    detach: vi.fn(async () => ({ ok: true })),
   } as unknown as ReturnType<typeof stubAgentBlocks>;
 }
 
@@ -111,6 +113,17 @@ describe('letta wrap (global blocks)', () => {
     const events = await readEvents(paths, config);
     const payload = events[1]?.payload_preview ? JSON.parse(events[1].payload_preview) : null;
     expect(payload?.__psy_audit?.result).toEqual({ kind: 'unknown' });
+  });
+
+  it('escapes synthetic path segments from block and agent ids', async () => {
+    const { paths, config } = await initProject();
+    const target = stubAgentBlocks();
+    const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
+
+    await audited.attach('blk/42', { agent_id: 'agent/a b' });
+
+    const events = await readEvents(paths, config);
+    expect(events[0]?.memory_path).toBe('letta://agents/agent%2Fa%20b/blocks/id:blk%2F42');
   });
 
   it('rethrows the exact SDK error object from global calls', async () => {
@@ -209,13 +222,23 @@ describe('letta wrap (agent-scoped blocks)', () => {
     ]);
   });
 
-  it('passes through attach without auditing', async () => {
-    const { paths } = await initProject();
+  it('audits attach and detach as agent block membership changes', async () => {
+    const { paths, config } = await initProject();
     const target = stubAgentBlocks();
     const audited = wrap(target, { actorId: 'actor-1', configPath: paths.configPath });
 
     await audited.attach('blk_42', { agent_id: 'agent_1' });
-    expect(target.attach).toHaveBeenCalledWith('blk_42', { agent_id: 'agent_1' });
+    await audited.detach?.('blk_42', { agent_id: 'agent_1' });
+
+    expect(target.attach).toHaveBeenCalledWith('blk_42', { agent_id: 'agent_1' }, undefined);
+    expect(target.detach).toHaveBeenCalledWith('blk_42', { agent_id: 'agent_1' }, undefined);
+    const events = await readEvents(paths, config);
+    expect(events.map((e) => `${e.operation}:${e.audit_phase}:${e.memory_path}`)).toEqual([
+      'create:intent:letta://agents/agent_1/blocks/id:blk_42',
+      'create:result:letta://agents/agent_1/blocks/id:blk_42',
+      'delete:intent:letta://agents/agent_1/blocks/id:blk_42',
+      'delete:result:letta://agents/agent_1/blocks/id:blk_42',
+    ]);
   });
 
   it('forwards agent-scoped update call options without changing the response', async () => {

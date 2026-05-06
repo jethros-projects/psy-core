@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Auditor, resolveIdentity, summarizeError } from '../../auditor.js';
+import { pathSegment } from '../../path-segment.js';
 import type { WrapOptions } from '../../types.js';
 
 import {
@@ -76,7 +77,7 @@ export function wrap<T extends LangGraphCheckpointSaver>(saver: T, options: Wrap
       const auditor = await getAuditor();
       // For put, the meaningful identity is the NEW checkpoint, not the
       // parent. Use checkpoint.id directly.
-      const path = `${LANGGRAPH_PATH_PREFIX}threads/${threadIdOf(config)}/${nsOf(config)}/${checkpoint.id}`;
+      const path = `${LANGGRAPH_PATH_PREFIX}threads/${threadIdOf(config)}/${nsOf(config)}/${pathSegment(checkpoint.id)}`;
       return runAudited<LangGraphRunnableConfig>(auditor, options, {
         operation: 'create',
         memoryPath: path,
@@ -89,7 +90,7 @@ export function wrap<T extends LangGraphCheckpointSaver>(saver: T, options: Wrap
       taskId: string,
     ) {
       const auditor = await getAuditor();
-      const path = `${checkpointPath(config)}/writes/${taskId}+${writes.length}`;
+      const path = `${checkpointPath(config)}/writes/${pathSegment(taskId)}+${writes.length}`;
       return runAudited<void>(auditor, options, {
         operation: 'insert',
         memoryPath: path,
@@ -100,7 +101,7 @@ export function wrap<T extends LangGraphCheckpointSaver>(saver: T, options: Wrap
       const auditor = await getAuditor();
       return runAudited<void>(auditor, options, {
         operation: 'delete',
-        memoryPath: `${LANGGRAPH_PATH_PREFIX}threads/${threadId}`,
+        memoryPath: `${LANGGRAPH_PATH_PREFIX}threads/${pathSegment(threadId)}`,
         run: () => saver.deleteThread(threadId),
       });
     },
@@ -248,16 +249,16 @@ async function* auditedListGenerator(
 }
 
 function threadIdOf(config: LangGraphRunnableConfig): string {
-  return config.configurable?.thread_id ?? 'unknown-thread';
+  return pathSegment(config.configurable?.thread_id, 'unknown-thread');
 }
 
 function nsOf(config: LangGraphRunnableConfig): string {
   const ns = config.configurable?.checkpoint_ns;
-  return ns && ns.length > 0 ? ns : '_';
+  return pathSegment(ns && ns.length > 0 ? ns : '_');
 }
 
 function checkpointPath(config: LangGraphRunnableConfig): string {
   const id = config.configurable?.checkpoint_id;
   const base = `${LANGGRAPH_PATH_PREFIX}threads/${threadIdOf(config)}/${nsOf(config)}`;
-  return id ? `${base}/${id}` : `${base}/latest`;
+  return id ? `${base}/${pathSegment(id)}` : `${base}/latest`;
 }

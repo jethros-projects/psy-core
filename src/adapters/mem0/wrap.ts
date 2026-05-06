@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Auditor, resolveIdentity, summarizeError } from '../../auditor.js';
+import { pathSegment } from '../../path-segment.js';
 import type { WrapOptions } from '../../types.js';
 
 import {
@@ -34,11 +35,10 @@ type Mem0Operation = 'view' | 'create' | 'str_replace' | 'delete';
  * `insert` and `rename` are absent: mem0 has no positional insert (memories
  * are atomic) and no rename (IDs are server-issued UUIDs).
  *
- * Bulk and admin endpoints (`deleteAll`, `batchUpdate`, `batchDelete`,
- * `reset`, `users`, `feedback`, `createMemoryExport`, `getWebhooks`, etc.)
- * pass through unaudited — they are not memory CRUD ops in the canonical
- * sense. Consumers who need them audited can call them and emit explicit
- * events via the lower-level Auditor API.
+ * Bulk memory mutations (`deleteAll`, `batchUpdate`, `batchDelete`) are
+ * recorded once at the call boundary. Admin endpoints (`reset`, `users`,
+ * `feedback`, `createMemoryExport`, `getWebhooks`, etc.) pass through
+ * unaudited because they are not memory CRUD ops in the canonical sense.
  *
  * Path scheme:
  *   - Identified ops:  mem0://<scope>/<memoryId>
@@ -76,7 +76,7 @@ export function wrap<T extends Mem0Client>(client: T, options: WrapOptions = {})
       const auditor = await getAuditor();
       return runAudited<Mem0Memory>(auditor, options, {
         operation: 'view',
-        memoryPath: `${MEM0_PATH_PREFIX}memories/${memoryId}`,
+        memoryPath: `${MEM0_PATH_PREFIX}memories/${pathSegment(memoryId)}`,
         run: () => client.get(memoryId),
       });
     },
@@ -92,7 +92,7 @@ export function wrap<T extends Mem0Client>(client: T, options: WrapOptions = {})
       const auditor = await getAuditor();
       return runAudited<unknown>(auditor, options, {
         operation: 'view',
-        memoryPath: `${MEM0_PATH_PREFIX}memories/${memoryId}/history`,
+        memoryPath: `${MEM0_PATH_PREFIX}memories/${pathSegment(memoryId)}/history`,
         run: () => client.history(memoryId),
       });
     },
@@ -100,7 +100,7 @@ export function wrap<T extends Mem0Client>(client: T, options: WrapOptions = {})
       const auditor = await getAuditor();
       return runAudited<Mem0Memory[] | Mem0Memory>(auditor, options, {
         operation: 'str_replace',
-        memoryPath: `${MEM0_PATH_PREFIX}memories/${memoryId}`,
+        memoryPath: `${MEM0_PATH_PREFIX}memories/${pathSegment(memoryId)}`,
         run: () => client.update(memoryId, body),
       });
     },
@@ -108,8 +108,41 @@ export function wrap<T extends Mem0Client>(client: T, options: WrapOptions = {})
       const auditor = await getAuditor();
       return runAudited<unknown>(auditor, options, {
         operation: 'delete',
-        memoryPath: `${MEM0_PATH_PREFIX}memories/${memoryId}`,
+        memoryPath: `${MEM0_PATH_PREFIX}memories/${pathSegment(memoryId)}`,
         run: () => client.delete(memoryId),
+      });
+    },
+    async deleteAll(opts?: Mem0EntityOptions) {
+      const auditor = await getAuditor();
+      if (typeof client.deleteAll !== 'function') {
+        throw new TypeError('client.deleteAll is not available on this Mem0 client');
+      }
+      return runAudited<unknown>(auditor, options, {
+        operation: 'delete',
+        memoryPath: `${MEM0_PATH_PREFIX}${entityScope(opts ?? {})}/all`,
+        run: () => client.deleteAll!(opts),
+      });
+    },
+    async batchUpdate(memories: unknown, opts?: unknown) {
+      const auditor = await getAuditor();
+      if (typeof client.batchUpdate !== 'function') {
+        throw new TypeError('client.batchUpdate is not available on this Mem0 client');
+      }
+      return runAudited<unknown>(auditor, options, {
+        operation: 'str_replace',
+        memoryPath: `${MEM0_PATH_PREFIX}batch/update/${itemCount(memories)}`,
+        run: () => client.batchUpdate!(memories, opts),
+      });
+    },
+    async batchDelete(memoryIds: unknown, opts?: unknown) {
+      const auditor = await getAuditor();
+      if (typeof client.batchDelete !== 'function') {
+        throw new TypeError('client.batchDelete is not available on this Mem0 client');
+      }
+      return runAudited<unknown>(auditor, options, {
+        operation: 'delete',
+        memoryPath: `${MEM0_PATH_PREFIX}batch/delete/${itemCount(memoryIds)}`,
+        run: () => client.batchDelete!(memoryIds, opts),
       });
     },
   };
@@ -190,9 +223,13 @@ function entityScope(opts: Mem0EntityOptions & Record<string, unknown>): string 
   const agentId = opts.agentId ?? opts.agent_id;
   const runId = opts.runId ?? opts.run_id;
   const appId = opts.appId ?? opts.app_id;
-  if (typeof userId === 'string' && userId.length > 0) return `users/${userId}`;
-  if (typeof agentId === 'string' && agentId.length > 0) return `agents/${agentId}`;
-  if (typeof runId === 'string' && runId.length > 0) return `runs/${runId}`;
-  if (typeof appId === 'string' && appId.length > 0) return `apps/${appId}`;
+  if (typeof userId === 'string' && userId.length > 0) return `users/${pathSegment(userId)}`;
+  if (typeof agentId === 'string' && agentId.length > 0) return `agents/${pathSegment(agentId)}`;
+  if (typeof runId === 'string' && runId.length > 0) return `runs/${pathSegment(runId)}`;
+  if (typeof appId === 'string' && appId.length > 0) return `apps/${pathSegment(appId)}`;
   return 'unscoped';
+}
+
+function itemCount(value: unknown): string {
+  return Array.isArray(value) ? `${value.length}` : 'unknown';
 }

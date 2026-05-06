@@ -57,7 +57,7 @@ export const provider: MemoryProvider<unknown> = {
   name: 'gbrain',
   auditSchemaVersion: `^${CURRENT_AUDIT_SCHEMA_VERSION}`,
   compatibleProviderVersions: '>=0.26 <1',
-  capabilities: ['view', 'create', 'str_replace', 'insert', 'delete', 'rename'],
+  capabilities: ['view', 'str_replace', 'insert', 'delete', 'rename'],
   memoryPathScheme: 'gbrain://',
   wrap: ((handler: unknown) => {
     if (Array.isArray(handler)) {
