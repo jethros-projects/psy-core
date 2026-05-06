@@ -43,6 +43,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from psy_core.hermes._version import PSY_CORE_SCHEMA_VERSION
+
 LOG = logging.getLogger("psy_core.hermes.ingest")
 
 #: How many consecutive failures put the client into degraded state.
@@ -162,6 +164,7 @@ class IngestClient:
         plan: IngestSpawnPlan,
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
+        schema_version_pin: str = PSY_CORE_SCHEMA_VERSION,
         startup_timeout_s: float = STARTUP_TIMEOUT_S,
         ack_timeout_s: float = ACK_TIMEOUT_S,
         log: logging.Logger | None = None,
@@ -169,6 +172,7 @@ class IngestClient:
         self._plan = plan
         self._cwd = cwd
         self._env = env or {}
+        self._schema_version_pin = schema_version_pin
         self._startup_timeout_s = startup_timeout_s
         self._ack_timeout_s = ack_timeout_s
         self._log = log or LOG
@@ -364,6 +368,12 @@ class IngestClient:
             ) from exc
         if not parsed.get("ok"):
             raise RuntimeError(f"ingest subprocess refused handshake: {parsed!r}")
+        schema_version = parsed.get("schema_version")
+        if schema_version != self._schema_version_pin:
+            raise RuntimeError(
+                "ingest subprocess schema_version "
+                f"{schema_version!r} does not match pinned {self._schema_version_pin!r}"
+            )
         return cast(dict[str, Any], parsed)
 
     def _readline_with_deadline(

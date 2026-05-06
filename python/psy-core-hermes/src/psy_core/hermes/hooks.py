@@ -257,7 +257,8 @@ class HookHandlers:
         if self.config.dry_run:
             self.log.info("psy-core-hermes dry-run intent: %s", envelope)
             return
-        self.ingest.send(envelope)
+        if not self.ingest.send(envelope):
+            return
 
         # Stash the intent so the filesystem watcher can match a result
         # envelope back to it within the 1-second window.

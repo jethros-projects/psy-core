@@ -384,7 +384,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         out.write("  npx on PATH:         no (install Node.js)\n")
 
     out.write("\nHandshake test:\n")
-    client = IngestClient(plan=plan, env=_ingest_env(config))
+    client = IngestClient(
+        plan=plan,
+        env=_ingest_env(config),
+        schema_version_pin=config.schema_version_pin,
+    )
     try:
         try:
             client._ensure_started()

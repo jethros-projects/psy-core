@@ -24,7 +24,7 @@ export default definePluginEntry({
       config,
       logger: api.logger,
       ingest,
-      getAppConfig: () => api.runtime?.config?.current?.() ?? api.config ?? {},
+      getAppConfig: () => api.config ?? api.runtime?.config?.current?.() ?? {},
     });
 
     api.on("before_tool_call", (event, ctx) => observer.beforeToolCall(event, ctx), {

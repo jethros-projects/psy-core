@@ -174,6 +174,24 @@ def test_pre_tool_call_swallows_handler_exceptions(hooks: HookHandlers, fake_ing
     )
 
 
+def test_pre_tool_call_does_not_record_pending_when_send_is_dropped(
+    hooks: HookHandlers,
+    fake_ingest: Any,
+) -> None:
+    def drop(_: dict[str, Any]) -> bool:
+        return False
+
+    fake_ingest.send = drop
+
+    hooks.pre_tool_call(
+        tool_name="memory",
+        args={"action": "add", "content": "lost"},
+        tool_call_id="dropped-intent",
+    )
+
+    assert "dropped-intent" not in hooks.pending
+
+
 def test_dry_run_short_circuits_send(
     base_config: PsyHermesConfig,
     fake_ingest: Any,

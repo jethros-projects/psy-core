@@ -172,6 +172,25 @@ def test_ingest_client_rejects_failed_handshake(tmp_path: Path) -> None:
         client.close()
 
 
+def test_ingest_client_rejects_schema_version_mismatch(tmp_path: Path) -> None:
+    binary = tmp_path / "psy-wrong-schema"
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        "sys.stdout.write(json.dumps({'ok': True, 'version': 'fake', 'schema_version': '2.0.0'}) + '\\n')\n"
+        "sys.stdout.flush()\n"
+    )
+    binary.chmod(0o755)
+    plan = IngestSpawnPlan(argv=[str(binary), "ingest"], description="wrong-schema")
+    client = IngestClient(plan=plan, startup_timeout_s=1.0, schema_version_pin="1.0.0")
+    try:
+        assert client.send({"type": "intent", "operation": "create", "call_id": "x"}) is False
+        assert client._proc is None
+        assert client.handshake is None
+    finally:
+        client.close()
+
+
 def test_ingest_client_degrades_after_non_json_handshakes(tmp_path: Path) -> None:
     binary = tmp_path / "psy-bad-json"
     binary.write_text(f"#!{sys.executable}\nimport sys\nsys.stdout.write('not-json\\n')\nsys.stdout.flush()\n")

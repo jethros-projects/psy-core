@@ -140,7 +140,7 @@ class PsyIngestStore {
     }
 
     const envelope = parsed.envelope;
-    const payload = capturePayload(envelope);
+    const payload = attachIngestMetadata(capturePayload(envelope), envelope.source);
     const payloadRedacted =
       envelope.payload !== undefined && envelope.payload !== null && envelope.redact_payload !== false;
     const identity = envelope.identity
@@ -164,6 +164,7 @@ class PsyIngestStore {
               purpose: envelope.purpose,
               payload,
               payloadRedacted,
+              redactorId: payloadRedacted ? "default-regex-v1" : null,
             })
           : this.appendResult({
               operation: envelope.operation,
@@ -174,6 +175,7 @@ class PsyIngestStore {
               purpose: envelope.purpose,
               payload,
               payloadRedacted,
+              redactorId: payloadRedacted ? "default-regex-v1" : null,
               outcome: envelope.outcome,
             });
       this.writeHead(event.seq, event.hash, event.timestamp);
@@ -209,6 +211,7 @@ class PsyIngestStore {
         memoryPath: input.memoryPath,
         purpose: input.purpose,
         payloadRedacted: input.payloadRedacted,
+        redactorId: input.redactorId,
       }),
     );
   }
@@ -230,6 +233,7 @@ class PsyIngestStore {
           memoryPath: input.memoryPath,
           purpose: input.purpose,
           payloadRedacted: input.payloadRedacted,
+          redactorId: input.redactorId,
           outcome: input.outcome,
         }),
       ),
@@ -590,6 +594,15 @@ function capturePayload(envelope) {
   return redactJson(envelope.payload);
 }
 
+function attachIngestMetadata(value, source) {
+  if (!source) return value;
+  const metadata = { source };
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return { ...value, __psy_ingest: metadata };
+  }
+  return { value, __psy_ingest: metadata };
+}
+
 function redactJson(value) {
   if (typeof value === "string") return redactString(value);
   if (Array.isArray(value)) return value.map((item) => redactJson(item));
@@ -629,7 +642,7 @@ function createDraftEvent(input) {
     purpose: input.purpose ?? null,
     payload_preview: payloadJson,
     payload_redacted: input.payloadRedacted ?? false,
-    redactor_id: null,
+    redactor_id: input.redactorId ?? null,
     redactor_error: null,
     tool_input_hash: hashCanonical(
       input.phase === "intent" ? input.payload : { callId: input.callId, operation: input.operation },

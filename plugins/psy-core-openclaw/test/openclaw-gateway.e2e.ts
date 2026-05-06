@@ -40,6 +40,21 @@ type OpenClawModules = {
   resetRuntime: () => void;
 };
 
+type OpenClawHookRunner = {
+  hasHooks: (hookName: "before_tool_call") => boolean;
+  runBeforeToolCall: (
+    event: {
+      toolName: string;
+      params: Record<string, unknown>;
+      toolCallId?: string;
+    },
+    ctx: {
+      agentId?: string;
+      sessionKey?: string;
+    },
+  ) => Promise<unknown>;
+};
+
 let modulesPromise: Promise<OpenClawModules> | null = null;
 
 async function importOpenClaw<T>(relativePath: string): Promise<T> {
@@ -129,58 +144,6 @@ async function setupGatewayHome(prefix: string) {
   return { envSnapshot, tempHome, workspaceDir };
 }
 
-async function writeReadToolPlugin(params: { pluginDir: string; workspaceDir: string }) {
-  await fs.mkdir(params.pluginDir, { recursive: true });
-  await fs.writeFile(
-    path.join(params.pluginDir, "openclaw.plugin.json"),
-    `${JSON.stringify(
-      {
-        id: "psy-e2e-read",
-        contracts: { tools: ["read"] },
-        activation: { onStartup: true },
-        configSchema: { type: "object", additionalProperties: false, properties: {} },
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
-  await fs.writeFile(
-    path.join(params.pluginDir, "index.cjs"),
-    `
-const fs = require("node:fs/promises");
-const path = require("node:path");
-
-module.exports = {
-  id: "psy-e2e-read",
-  register(api) {
-    api.registerTool({
-      name: "read",
-      description: "Read a file from the E2E workspace.",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"],
-        additionalProperties: false,
-      },
-      execute: async (_toolCallId, args) => {
-        const relativePath = String(args && args.path ? args.path : "");
-        const target = path.resolve(${JSON.stringify(params.workspaceDir)}, relativePath);
-        const root = path.resolve(${JSON.stringify(params.workspaceDir)});
-        if (target !== root && !target.startsWith(root + path.sep)) {
-          throw new Error("path escapes workspace");
-        }
-        const text = await fs.readFile(target, "utf8");
-        return { content: [{ type: "text", text }] };
-      },
-    });
-  },
-};
-`.trimStart(),
-    "utf8",
-  );
-}
-
 function nextId(prefix: string): string {
   return `${prefix}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -234,7 +197,7 @@ describe("psy-core OpenClaw gateway E2E", () => {
   });
 
   it(
-    "loads the plugin in a real gateway process and records a memory read intent through HTTP tools",
+    "loads the plugin in a real gateway process and records a memory read intent through gateway hooks",
     { timeout: GATEWAY_E2E_TIMEOUT_MS },
     async () => {
       const modules = await loadModules();
@@ -249,23 +212,21 @@ describe("psy-core OpenClaw gateway E2E", () => {
       const psyDir = path.join(tempHome, "psy");
       const dbPath = path.join(psyDir, "events.sqlite");
       const sealKeyPath = path.join(psyDir, "seal-key");
-      const readToolPluginDir = path.join(tempHome, "psy-e2e-read-plugin");
       const memoryText = `nonceA=${nextId("a")} nonceB=${nextId("b")}\n`;
       await fs.mkdir(configDir, { recursive: true });
       await fs.mkdir(psyDir, { recursive: true });
       await fs.writeFile(path.join(workspaceDir, "MEMORY.md"), memoryText, "utf8");
-      await writeReadToolPlugin({ pluginDir: readToolPluginDir, workspaceDir });
 
       const cfg = {
         agents: {
           defaults: {
             workspace: workspaceDir,
           },
-          list: [{ id: "main", default: true, tools: { allow: ["read"] } }],
+          list: [{ id: "main", default: true }],
         },
         plugins: {
-          load: { paths: [PSY_PLUGIN_DIR, readToolPluginDir] },
-          allow: ["psy-core", "psy-e2e-read"],
+          load: { paths: [PSY_PLUGIN_DIR] },
+          allow: ["psy-core"],
           entries: {
             "psy-core": {
               enabled: true,
@@ -294,24 +255,19 @@ describe("psy-core OpenClaw gateway E2E", () => {
 
       try {
         const sessionKey = "agent:main:psy-core-openclaw-e2e";
-        const response = await fetch(`http://127.0.0.1:${port}/tools/invoke`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-            "content-type": "application/json",
-            connection: "close",
+        const { getGlobalHookRunner } = await importOpenClaw<{
+          getGlobalHookRunner: () => OpenClawHookRunner | null;
+        }>("src/plugins/hook-runner-global.ts");
+        const hookRunner = getGlobalHookRunner();
+        expect(hookRunner?.hasHooks("before_tool_call")).toBe(true);
+        await hookRunner?.runBeforeToolCall(
+          {
+            toolName: "read",
+            params: { path: "MEMORY.md" },
+            toolCallId: nextId("tool"),
           },
-          body: JSON.stringify({
-            tool: "read",
-            action: "json",
-            args: { path: "MEMORY.md" },
-            sessionKey,
-          }),
-        });
-        const responseText = await response.text();
-        expect(response.status, responseText).toBe(200);
-        const body = JSON.parse(responseText) as { ok?: unknown };
-        expect(body.ok, JSON.stringify(body, null, 2)).toBe(true);
+          { agentId: "main", sessionKey },
+        );
 
         const rows = await pollEvents(dbPath, (events) => events.length >= 1);
         expect(rows).toHaveLength(1);

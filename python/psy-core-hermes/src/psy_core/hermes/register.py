@@ -84,7 +84,11 @@ def register(ctx: Any) -> None:
         LOG.error("psy-core-hermes: %s", exc)
         return
 
-    ingest = IngestClient(plan=plan, env=_ingest_env(config))
+    ingest = IngestClient(
+        plan=plan,
+        env=_ingest_env(config),
+        schema_version_pin=config.schema_version_pin,
+    )
     redactor = resolve_redactor(config.redactor)
     handlers = make_hook_handlers(config, ingest, redactor)
     watcher = MemoryWatcher(config=config, hooks=handlers, ingest=ingest)

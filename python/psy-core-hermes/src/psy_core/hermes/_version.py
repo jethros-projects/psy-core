@@ -18,7 +18,7 @@ PSY_CORE_VERSION: str = "0.5.1"
 
 #: The on-disk audit schema version this release was tested against. Used
 #: as the default for `schema_version_pin`; if the subprocess handshake
-#: reports a different schema version, the plugin logs a WARN.
+#: reports a different schema version, the plugin refuses that writer.
 PSY_CORE_SCHEMA_VERSION: str = "1.0.0"
 
 #: The ingest protocol version (handshake `version` field). Independent of
