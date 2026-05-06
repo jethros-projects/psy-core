@@ -43,6 +43,10 @@ Use the psy-core trust layer skill to verify my setup.
 In another terminal:
 
 ```bash
+export PSY_AUDIT_DB_PATH="$HOME/.hermes/psy/audit.db"
+export PSY_ARCHIVES_PATH="$HOME/.hermes/psy/archives"
+export PSY_SEAL_KEY_PATH="$HOME/.hermes/psy/seal-key"
+export PSY_HEAD_PATH="$HOME/.hermes/psy/head.json"
 psy tail
 ```
 
@@ -281,7 +285,7 @@ For shared machines, hosted agents, or any real user data, set `actor_id`.
 
 ## Skill Churn Reports
 
-Hermes skills are procedural memory. A skill that is created once and reused may be healthy; a skill that is patched five times in an hour may be unstable. The audit chain can measure that because every skill write has a timestamp and an immutable order.
+Hermes skills are procedural memory. A skill that is created once and reused may be healthy; a skill that is patched five times in an hour may be unstable. The audit chain can measure that because every skill write has a timestamp and a verified chain position.
 
 ```bash
 psy-core-hermes skill-stats

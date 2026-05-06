@@ -100,7 +100,7 @@ The agent keeps its memory. You get the receipts.
 | Mem0 | `npm install mem0ai` | `psy-core/mem0` | view, create, str_replace, delete |
 | LangChain chat history | `npm install @langchain/core` | `psy-core/langchain` | view, insert, delete |
 | LangGraph checkpointers | `npm install @langchain/langgraph-checkpoint` | `psy-core/langgraph` | view, create, insert, delete |
-| GBrain operations and BrainEngine | `bun link` or installed GBrain | `psy-core/gbrain` | view, create, str_replace, insert, delete, rename |
+| GBrain operations and BrainEngine | `bun link` or installed GBrain | `psy-core/gbrain` | view, str_replace, insert, delete, rename |
 | Hermes Agent memory and skills | `pip install psy-core-hermes` | Python plugin | create, str_replace, delete |
 | OpenClaw memory and skills | `openclaw plugins install psy-core-openclaw` | OpenClaw plugin | view, create, str_replace, delete |
 
@@ -342,7 +342,7 @@ Useful environment variables:
 
 **Tamper-evident, not tamper-proof.** psy-core detects row edits, row reordering, sequence gaps, broken hashes, meta-head mismatch, orphaned intent rows, archive mismatch, and sealed-tail mismatch. It does not stop an attacker from deleting all local files.
 
-**Fail-closed wrapper path.** If psy-core cannot write the intent row, the wrapped handler does not run. If the result row cannot be written after the handler runs, verification can still flag the orphaned intent.
+**Fail-closed wrapper path.** For in-process Node wrappers, if psy-core cannot write the intent row, the wrapped handler does not run. If the result row cannot be written after the handler runs, verification can still flag the orphaned intent. Observer plugins such as Hermes and OpenClaw are best-effort witnesses at their host hook boundary.
 
 **Best-effort redaction.** Built-in redaction catches common OpenAI, Anthropic, AWS, Google, GitHub, Bearer, JWT, and PEM secret patterns. Treat previews as operational diagnostics, not a DLP boundary.
 

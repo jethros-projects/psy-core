@@ -81,6 +81,10 @@ cat <<EOF
 Next steps:
 
   1. Watch the audit chain:
+       export PSY_AUDIT_DB_PATH="\$HOME/.hermes/psy/audit.db"
+       export PSY_ARCHIVES_PATH="\$HOME/.hermes/psy/archives"
+       export PSY_SEAL_KEY_PATH="\$HOME/.hermes/psy/seal-key"
+       export PSY_HEAD_PATH="\$HOME/.hermes/psy/head.json"
        psy tail
 
   2. In another terminal, run Hermes (requires --with-hermes if you

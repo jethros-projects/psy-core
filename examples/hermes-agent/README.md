@@ -4,7 +4,7 @@ A tiny Hermes lab: install the plugin, make Hermes write memory, then verify the
 
 Use this when you want to see the whole loop before wiring psy-core-hermes into a real agent. The script bootstraps a local Python environment, installs the Hermes plugin, points it at psy-core, and gives you a short session that should produce paired `intent` and `result` rows.
 
-> **Ten minutes to a working audit chain.** Run `./run.sh`, start `psy tail`, make Hermes remember something, then run `psy verify --all`.
+> **Ten minutes to a working audit chain.** Run `./run.sh`, start `psy tail` with the Hermes psy paths exported, make Hermes remember something, then run `psy verify --all`.
 
 ## What This Shows
 
@@ -28,6 +28,10 @@ To also install Hermes Agent from GitHub into the local virtualenv:
 In one terminal:
 
 ```bash
+export PSY_AUDIT_DB_PATH="$HOME/.hermes/psy/audit.db"
+export PSY_ARCHIVES_PATH="$HOME/.hermes/psy/archives"
+export PSY_SEAL_KEY_PATH="$HOME/.hermes/psy/seal-key"
+export PSY_HEAD_PATH="$HOME/.hermes/psy/head.json"
 psy tail
 ```
 

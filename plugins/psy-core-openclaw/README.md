@@ -40,6 +40,9 @@ Install `psy-core` only when you want the CLI for verification, tailing, or quer
 
 ```bash
 npm install -g psy-core@0.5.1
+export PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db"
+export PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key"
+export PSY_HEAD_PATH="$HOME/.psy/head.json"
 psy tail
 psy verify --all
 ```
