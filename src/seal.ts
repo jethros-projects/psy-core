@@ -50,8 +50,8 @@ export interface BootstrapResult {
  *
  * Threat model: defends against an attacker who can write to events.sqlite
  * but does NOT have read access to the seal key (PSY_SEAL_KEY env var or the
- * seal-key file). For a full tamper-proof story (key in OS keychain / HSM),
- * see the roadmap — not yet shipped.
+ * seal-key file). Stronger key custody (OS keychain / HSM) is roadmap
+ * work, not shipped here.
  */
 export class Sealer {
   private readonly headPath: string;

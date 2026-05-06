@@ -52,9 +52,9 @@ const ConfigSchema = z.object({
    * project root, above `.psy/`) preserves the "seal expected" signal so a
    * downgrade attack cannot silently bypass tamper detection.
    *
-   * `optional` is for migration cases or when the user has explicitly opted
-   * out via `psy init --seal=optional`. `psy verify` only runs the seal
-   * check if a head pointer exists.
+   * `optional` is for migration cases or SDK-only setups that have not run
+   * `psy init`/`init()`. `psy verify` only runs the seal check if a head
+   * pointer exists.
    */
   seal: z.enum(['required', 'optional']).default('optional'),
 });

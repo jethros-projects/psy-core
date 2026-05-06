@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
@@ -56,6 +56,9 @@ export interface AppendIdentityInput {
 export interface AppendIntentInput {
   operation: string;
   payload?: unknown;
+  payloadRedacted?: boolean;
+  redactorId?: string | null;
+  redactorError?: string | null;
   callId?: string;
   timestamp?: string | Date;
   identity?: AppendIdentityInput;
@@ -67,6 +70,9 @@ export interface AppendIntentInput {
 export interface AppendResultInput {
   operation: string;
   payload?: unknown;
+  payloadRedacted?: boolean;
+  redactorId?: string | null;
+  redactorError?: string | null;
   callId: string;
   intentSeq?: number | null;
   timestamp?: string | Date;
@@ -159,6 +165,9 @@ export class PsyStore {
       operation: input.operation,
       callId,
       payload,
+      payloadRedacted: input.payloadRedacted,
+      redactorId: input.redactorId,
+      redactorError: input.redactorError,
       timestamp: input.timestamp,
       identity: input.identity,
       memoryPath: input.memoryPath,
@@ -180,6 +189,9 @@ export class PsyStore {
       operation: input.operation,
       callId: input.callId,
       payload,
+      payloadRedacted: input.payloadRedacted,
+      redactorId: input.redactorId,
+      redactorError: input.redactorError,
       timestamp: input.timestamp,
       identity: input.identity,
       memoryPath: input.memoryPath,
@@ -434,6 +446,7 @@ export class PsyStore {
 
   private rotateRows(rows: AuditEvent[], archivePath: string, rotatedAt: string): string {
     this.db.exec('BEGIN IMMEDIATE');
+    let archiveCreated = false;
     try {
       const lockedRows = this.allActiveEvents();
       if (lockedRows.length === 0) {
@@ -447,6 +460,7 @@ export class PsyStore {
       const archiveSha256 = sha256Hex(archiveBuffer);
       mkdirSync(path.dirname(archivePath), { recursive: true });
       writeFileSync(archivePath, archiveBuffer, { flag: 'wx' });
+      archiveCreated = true;
       this.db
         .prepare(
           `INSERT INTO rotation_segments
@@ -461,6 +475,13 @@ export class PsyStore {
       return archiveSha256;
     } catch (error) {
       this.safeRollback();
+      if (archiveCreated) {
+        try {
+          unlinkSync(archivePath);
+        } catch {
+          // Best effort cleanup; verifier will flag a mismatched segment if one was recorded.
+        }
+      }
       throw error;
     }
   }
@@ -623,6 +644,9 @@ function compatDraft(input: {
   operation: string;
   callId: string;
   payload: JsonValue;
+  payloadRedacted?: boolean;
+  redactorId?: string | null;
+  redactorError?: string | null;
   timestamp?: string | Date;
   identity?: AppendIdentityInput;
   memoryPath?: string;
@@ -645,9 +669,9 @@ function compatDraft(input: {
     memory_path: input.memoryPath ?? '/memories',
     purpose: input.purpose ?? null,
     payload_preview: payloadJson,
-    payload_redacted: false,
-    redactor_id: null,
-    redactor_error: null,
+    payload_redacted: input.payloadRedacted ?? false,
+    redactor_id: input.redactorId ?? null,
+    redactor_error: input.redactorError ?? null,
     tool_input_hash: hashCanonical(input.phase === 'intent' ? input.payload : { callId: input.callId, operation: input.operation }),
     tool_output_hash: input.phase === 'result' ? hashCanonical(input.payload) : null,
     outcome: input.outcome ?? 'success',

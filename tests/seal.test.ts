@@ -481,6 +481,19 @@ describe('downgrade-attack signal (Codex round 2 #2)', () => {
     store.close();
   });
 
+  it('SDK writes refuse to re-seal an existing required-seal chain', async () => {
+    const { paths, config } = await initProject({ seal: 'required' });
+    const store = new PsyStore({ sqlitePath: paths.sqlitePath, archivesPath: paths.archivesPath, config });
+    store.append(draft({ event_id: 'evt-1', operation_id: 'op-1', audit_phase: 'intent' }));
+    store.close();
+
+    const wrapped = wrap(makeHandlers(), { actorId: 'a', configPath: paths.configPath });
+
+    await expect(
+      wrapped.create({ command: 'create', path: '/memories/x.md', file_text: 'x' }),
+    ).rejects.toBeInstanceOf(PsyChainBroken);
+  });
+
   it('the seal-required marker is preserved in .psy.json even if .psy/ is wiped', async () => {
     // Simulate fresh v0.2 init: seal marker = required
     const { paths } = await initProject();

@@ -43,8 +43,10 @@ export const CURRENT_AUDIT_SCHEMA_VERSION = '1.0.0';
  * Lessons applied:
  *   1. Wrap-pattern, not event-emitter — preserves request/response
  *      correlation needed for the hash-chained audit log.
- *   2. Schema versioning + provider versioning declared explicitly — fail
- *      loud at registration, not at audit-write time.
+ *   2. Schema versioning + provider versioning declared explicitly. Core
+ *      schema compatibility fails loud at registration; provider-library
+ *      ranges are published as diagnostics because adapters stay
+ *      dependency-free and structural.
  *   3. Capabilities declared per adapter — consumers know coverage upfront,
  *      and `psy verify` can flag suspicious gaps.
  */
@@ -66,9 +68,11 @@ export interface MemoryProvider<H = unknown> {
 
   /**
    * Semver range of the wrapped third-party library this adapter supports.
-   * Example: an `psy-core/letta` adapter might pin "@letta-ai/letta-client"
-   * with `compatibleProviderVersions: ">=1.10 <2"`. End users get a clear
-   * error if their installed framework version drifts outside the range.
+   * Example: an `psy-core/letta` adapter might declare
+   * `compatibleProviderVersions: ">=1.10 <2"`. psy-core validates that this
+   * is a valid range and exposes it for diagnostics; the structural adapters
+   * do not import provider package manifests or enforce installed versions at
+   * runtime.
    */
   readonly compatibleProviderVersions: string;
 

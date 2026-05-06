@@ -127,6 +127,17 @@ export class Auditor {
       // Migration path: existing v0.1 DB with rows but no head.
       const tail = this.store.lastEvent();
       if (tail) {
+        if (this.store.config.seal === "required") {
+          throw new PsyChainBroken(
+            "Config marks seal as required but no sealed head pointer was found. Refusing to re-seal an existing chain.",
+            {
+              details: {
+                db_seq: tail.seq,
+                db_event_hash: tail.event_hash,
+              },
+            },
+          );
+        }
         sealer.writeHead(tail.seq, tail.event_hash);
       }
     }

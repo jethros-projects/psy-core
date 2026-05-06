@@ -38,7 +38,7 @@ export function verifyStore(store: PsyStore, options: VerifyStoreOptions = {}): 
     }
   }
 
-  const seen = new Map<string, { phases: Set<string>; outcomes: Set<string> }>();
+  const seen = new Map<string, { operationId: string; phases: Set<string>; outcomes: Set<string> }>();
   for (const row of rows) {
     if (row.seq !== expectedSeq) {
       issues.push(issue(row, 'seq_gap', `Expected seq ${expectedSeq}, got ${row.seq}`));
@@ -51,15 +51,20 @@ export function verifyStore(store: PsyStore, options: VerifyStoreOptions = {}): 
     if (actual !== row.event_hash) {
       issues.push(issue(row, 'event_hash_mismatch', `Expected event_hash ${actual}, got ${row.event_hash}`));
     }
-    const entry = seen.get(row.operation_id) ?? { phases: new Set<string>(), outcomes: new Set<string>() };
+    const key = pairKey(row);
+    const entry = seen.get(key) ?? {
+      operationId: row.operation_id,
+      phases: new Set<string>(),
+      outcomes: new Set<string>(),
+    };
     entry.phases.add(row.audit_phase);
     entry.outcomes.add(row.outcome);
-    seen.set(row.operation_id, entry);
+    seen.set(key, entry);
     expectedSeq = row.seq + 1;
     expectedPrev = row.event_hash;
   }
 
-  for (const [operationId, { phases, outcomes }] of seen) {
+  for (const { operationId, phases, outcomes } of seen.values()) {
     if (phases.has('intent') && !phases.has('result')) {
       issues.push({ seq: null, event_id: null, operation_id: operationId, code: 'orphaned_intent', message: 'Intent row has no matching result row' });
     }
@@ -157,16 +162,50 @@ function verifySeal(sealer: Sealer, verifiedTail: AuditEvent | null, issues: Ver
 export function archivedEvents(store: PsyStore, issues: VerifyIssue[] = []): AuditEvent[] {
   const rows: AuditEvent[] = [];
   for (const segment of store.rotationSegments()) {
-    const archiveBuffer = readFileSync(segment.archive_path);
+    let archiveBuffer: Buffer;
+    try {
+      archiveBuffer = readFileSync(segment.archive_path);
+    } catch (error) {
+      issues.push({
+        seq: segment.start_seq,
+        event_id: null,
+        operation_id: null,
+        code: 'archive_read_failed',
+        message: `Unable to read archive ${segment.archive_path}: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      continue;
+    }
     const actualArchiveHash = sha256Hex(archiveBuffer);
     if (segment.archive_sha256 && segment.archive_sha256 !== actualArchiveHash) {
       issues.push({ seq: segment.start_seq, event_id: null, operation_id: null, code: 'archive_hash_mismatch', message: 'Archive SHA-256 does not match rotation segment metadata' });
     }
-    const jsonl = gunzipSync(archiveBuffer).toString('utf8');
-    const parsed = jsonl
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => rowToEvent(JSON.parse(line)));
+    let jsonl: string;
+    try {
+      jsonl = gunzipSync(archiveBuffer).toString('utf8');
+    } catch (error) {
+      issues.push({
+        seq: segment.start_seq,
+        event_id: null,
+        operation_id: null,
+        code: 'archive_decode_failed',
+        message: `Unable to decode archive ${segment.archive_path}: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      continue;
+    }
+    const parsed: AuditEvent[] = [];
+    for (const line of jsonl.split('\n').filter(Boolean)) {
+      try {
+        parsed.push(rowToEvent(JSON.parse(line)));
+      } catch (error) {
+        issues.push({
+          seq: segment.start_seq,
+          event_id: null,
+          operation_id: null,
+          code: 'archive_json_invalid',
+          message: `Archive ${segment.archive_path} contains invalid JSONL: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
     rows.push(...parsed);
   }
   return rows;
@@ -197,4 +236,9 @@ function verifyRotationContinuity(store: PsyStore, issues: VerifyIssue[]): void 
 
 function issue(row: AuditEvent, code: string, message: string): VerifyIssue {
   return { seq: row.seq, event_id: row.event_id, operation_id: row.operation_id, code, message };
+}
+
+function pairKey(row: AuditEvent): string {
+  const callId = row.tool_call_id ?? row.operation_id;
+  return `${row.operation_id}\0${callId}\0${row.operation}`;
 }

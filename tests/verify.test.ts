@@ -38,4 +38,34 @@ describe('verifyStore', () => {
       store.close();
     }
   });
+
+  it('pairs intent/result rows by call id and operation, not call id alone', async () => {
+    const { store } = await openTempStore();
+    try {
+      store.append(draft({
+        event_id: 'evt-intent-create',
+        operation_id: 'same-call',
+        tool_call_id: 'same-call',
+        operation: 'create',
+        audit_phase: 'intent',
+      }));
+      store.append(draft({
+        event_id: 'evt-result-delete',
+        operation_id: 'same-call',
+        tool_call_id: 'same-call',
+        operation: 'delete',
+        audit_phase: 'result',
+        tool_output_hash: 'd'.repeat(64),
+      }));
+
+      const result = verifyStore(store);
+      const codes = result.issues.map((issue) => issue.code);
+
+      assert.equal(result.ok, false);
+      assert.equal(codes.includes('orphaned_intent'), true);
+      assert.equal(codes.includes('result_without_intent'), true);
+    } finally {
+      store.close();
+    }
+  });
 });
