@@ -7,11 +7,44 @@ import { describe, expect, it } from 'vitest';
 import { Sealer } from '../src/seal.js';
 import { openStore } from '../src/store.js';
 import { verifyStore } from '../src/verify.js';
-// @ts-expect-error OpenClaw plugin runtime is deliberately plain JavaScript.
-import { IngestClient } from '../plugins/psy-core-openclaw/src/ingest-client.js';
 
-describe('OpenClaw ingest compatibility', () => {
+async function hasNodeSqlite(): Promise<boolean> {
+  const sqliteSpecifier: string = 'node:sqlite';
+  try {
+    await import(sqliteSpecifier);
+    return true;
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : '';
+    if (code === 'ERR_UNKNOWN_BUILTIN_MODULE') {
+      return false;
+    }
+    if (error instanceof Error && error.message.includes('No such built-in module: node:sqlite')) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function loadIngestClient(): Promise<{
+  IngestClient: new (options: {
+    config: { dbPath: string; sealKeyPath: string };
+    logger: { error(): void; warn(): void };
+  }) => {
+    close(): void;
+    send(envelope: unknown): boolean;
+  };
+}> {
+  const ingestClientPath: string = '../plugins/psy-core-openclaw/src/ingest-client.js';
+  return import(ingestClientPath);
+}
+
+const describeIfNodeSqlite = await hasNodeSqlite() ? describe : describe.skip;
+
+describeIfNodeSqlite('OpenClaw ingest compatibility', () => {
   it('writes a database that root verifyStore can verify', async () => {
+    const { IngestClient } = await loadIngestClient();
     const dir = await mkdtemp(path.join(tmpdir(), 'psy-openclaw-root-verify-'));
     const config = {
       dbPath: path.join(dir, 'audit.db'),
