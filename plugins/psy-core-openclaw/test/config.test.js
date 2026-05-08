@@ -8,6 +8,7 @@ import {
   normalizeAgentId,
   parseAgentIdFromSessionKey,
   resolveDefaultWorkspaceDir,
+  resolveKnownWorkspaceDirs,
   resolveStateDir,
   resolveWorkspaceForEvent,
 } from "../src/config.js";
@@ -33,6 +34,9 @@ test("normalizes snake_case and camelCase config fields", () => {
   assert.equal(cfg.payloadCapture, false);
   assert.equal(cfg.dryRun, true);
   assert.equal(cfg.hookTimeoutMs, 2500);
+  assert.equal(cfg.dreamCatcherEnabled, true);
+  assert.equal(cfg.dreamCatcherIntervalMs, 15000);
+  assert.equal(cfg.dreamCatcherIncludeMachineState, false);
 });
 
 test("defaults payload capture off and only accepts pinned psy-core versions", () => {
@@ -84,6 +88,38 @@ test("uses environment fallbacks and ignores non-boolean toggles", () => {
   assert.equal(cfg.payloadCapture, false);
   assert.equal(cfg.allowAnonymous, true);
   assert.equal(cfg.hookTimeoutMs, 9);
+});
+
+test("normalizes dream catcher config and known workspaces", () => {
+  const env = { HOME: "/home/alice" };
+  const cfg = normalizeConfig(
+    {
+      actorId: "alice",
+      dream_catcher: {
+        enabled: false,
+        interval_ms: 2000,
+        include_machine_state: true,
+      },
+    },
+    env,
+  );
+  assert.equal(cfg.dreamCatcherEnabled, false);
+  assert.equal(cfg.dreamCatcherIntervalMs, 2000);
+  assert.equal(cfg.dreamCatcherIncludeMachineState, true);
+
+  const appConfig = {
+    agents: {
+      defaults: { workspace: "~/workspace" },
+      list: [
+        { id: "main", default: true },
+        { id: "ops", workspace: "~/ops" },
+      ],
+    },
+  };
+  assert.deepEqual(resolveKnownWorkspaceDirs(appConfig, env), [
+    "/home/alice/workspace",
+    "/home/alice/ops",
+  ]);
 });
 
 test("builds identity and ingest env blocks only from present values", () => {

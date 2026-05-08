@@ -260,7 +260,7 @@ pip install psy-core-hermes
 psy-core-hermes init --actor-id you@example.com
 ```
 
-Hermes writes to `MEMORY.md`, `USER.md`, and skills are observed from the Python process and streamed into `psy ingest`. See [`python/psy-core-hermes`](python/psy-core-hermes/README.md) and [`examples/hermes-agent`](examples/hermes-agent/README.md).
+Hermes writes to `MEMORY.md`, `USER.md`, dream catcher artifacts, and skills are observed from the Python process and streamed into `psy ingest`. See [`python/psy-core-hermes`](python/psy-core-hermes/README.md) and [`examples/hermes-agent`](examples/hermes-agent/README.md).
 
 ### OpenClaw
 
@@ -271,7 +271,7 @@ openclaw config set plugins.entries.psy-core.config.actorId "you@example.com"
 openclaw gateway restart
 ```
 
-The OpenClaw plugin observes tool calls that touch `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, `skill_workshop`, `memory-lancedb`, and `memory-wiki` surfaces. It writes paired psy audit envelopes directly from OpenClaw plugin hooks without shelling out to a `psy` binary. See [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md).
+The OpenClaw plugin observes tool calls that touch `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, `skill_workshop`, `memory-lancedb`, and `memory-wiki` surfaces. It also runs a dream catcher for background Dreaming artifacts such as `DREAMS.md` and `memory/dreaming/**` when those writes bypass tool hooks. Use `psy dream-catcher --since 24h` or the bundled `psy-core-dream-catcher` skill to turn those receipts into a scheduled chat brief. It writes psy audit envelopes directly from OpenClaw plugin hooks and the local catcher without shelling out to a `psy` binary. See [`plugins/psy-core-openclaw`](plugins/psy-core-openclaw/README.md).
 
 ## Provider Discovery
 

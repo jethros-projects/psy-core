@@ -181,6 +181,58 @@ module.exports = {
   );
 }
 
+async function writeDreamBackgroundToolPlugin(params: { pluginDir: string; workspaceDir: string }) {
+  await fs.mkdir(params.pluginDir, { recursive: true });
+  await fs.writeFile(
+    path.join(params.pluginDir, "openclaw.plugin.json"),
+    `${JSON.stringify(
+      {
+        id: "psy-e2e-dream-background",
+        contracts: { tools: ["dream_background_write"] },
+        activation: { onStartup: true },
+        configSchema: { type: "object", additionalProperties: false, properties: {} },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(params.pluginDir, "index.cjs"),
+    `
+const fs = require("node:fs/promises");
+const path = require("node:path");
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+module.exports = {
+  id: "psy-e2e-dream-background",
+  register(api) {
+    api.registerTool({
+      name: "dream_background_write",
+      description: "Write a Dreaming artifact from a non-file tool.",
+      parameters: {
+        type: "object",
+        properties: { content: { type: "string" } },
+        required: ["content"],
+        additionalProperties: false,
+      },
+      execute: async (_toolCallId, args) => {
+        await sleep(300);
+        await fs.writeFile(path.join(${JSON.stringify(params.workspaceDir)}, "DREAMS.md"), String(args.content), "utf8");
+        await sleep(700);
+        return { ok: true };
+      },
+    });
+  },
+};
+`.trimStart(),
+    "utf8",
+  );
+}
+
 function nextId(prefix: string): string {
   return `${prefix}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -335,6 +387,111 @@ describe("psy-core OpenClaw gateway E2E", () => {
         await expect(fs.stat(sealKeyPath)).resolves.toBeTruthy();
       } finally {
         await server.close({ reason: "psy-core OpenClaw gateway E2E complete" });
+        envSnapshot.restore();
+        await fs.rm(tempHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+      }
+    },
+  );
+
+  it(
+    "records a background Dreaming artifact without a tool call",
+    { timeout: GATEWAY_E2E_TIMEOUT_MS },
+    async () => {
+      const modules = await loadModules();
+      const { envSnapshot, tempHome, workspaceDir } = await setupGatewayHome("psy-openclaw-dream-e2e-");
+      const token = nextId("psy-token");
+      process.env.OPENCLAW_GATEWAY_TOKEN = token;
+
+      const configDir = path.join(tempHome, ".openclaw");
+      const configPath = path.join(configDir, "openclaw.json");
+      const psyDir = path.join(tempHome, "psy");
+      const dbPath = path.join(psyDir, "events.sqlite");
+      const sealKeyPath = path.join(psyDir, "seal-key");
+      const dreamToolPluginDir = path.join(tempHome, "psy-e2e-dream-plugin");
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.mkdir(psyDir, { recursive: true });
+      await writeDreamBackgroundToolPlugin({ pluginDir: dreamToolPluginDir, workspaceDir });
+
+      const cfg = {
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+          list: [{ id: "main", default: true }],
+        },
+        plugins: {
+          load: { paths: [PSY_PLUGIN_DIR, dreamToolPluginDir] },
+          allow: ["psy-core", "psy-e2e-dream-background"],
+          entries: {
+            "psy-core": {
+              enabled: true,
+              config: {
+                actorId: "psy-dream-e2e@example.test",
+                dbPath,
+                sealKeyPath,
+                payloadCapture: true,
+                dreamCatcherEnabled: true,
+                dreamCatcherIntervalMs: 100,
+                hookTimeoutMs: 5000,
+              },
+            },
+          },
+        },
+        gateway: { auth: { token } },
+      };
+
+      await fs.writeFile(configPath, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+      process.env.OPENCLAW_CONFIG_PATH = configPath;
+      const port = await modules.getFreeGatewayPort();
+      const server = await modules.startGatewayServer(port, {
+        bind: "loopback",
+        auth: { mode: "token", token },
+        controlUiEnabled: false,
+      });
+
+      try {
+        const sessionKey = "agent:main:psy-core-openclaw-dream-e2e";
+        const response = await fetch(`http://127.0.0.1:${port}/tools/invoke`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+            connection: "close",
+          },
+          body: JSON.stringify({
+            tool: "dream_background_write",
+            action: "json",
+            args: { content: `nightly dream ${nextId("dream")}\n` },
+            sessionKey,
+          }),
+        });
+        expect(response.status, await response.text()).toBe(200);
+
+        const rows = await pollEvents(dbPath, (events) =>
+          events.some((event) => event.memory_path === "/memories/DREAMS.md"),
+        );
+        const dreamRow = rows.find((event) => event.memory_path === "/memories/DREAMS.md");
+        expect(dreamRow).toMatchObject({
+          audit_phase: "result",
+          operation: "create",
+          actor_id: "psy-dream-e2e@example.test",
+          session_id: null,
+          memory_path: "/memories/DREAMS.md",
+          outcome: "unattributed",
+          payload_redacted: 1,
+        });
+        expect(String(dreamRow?.tool_call_id)).toMatch(/^dream-catcher-/);
+
+        const head = JSON.parse(await fs.readFile(path.join(psyDir, "head.json"), "utf8")) as {
+          seq?: unknown;
+          event_hash?: unknown;
+        };
+        expect(head.seq).toBe(dreamRow?.seq);
+        expect(Number(head.seq)).toBeGreaterThanOrEqual(1);
+        expect(typeof head.event_hash).toBe("string");
+        await expect(fs.stat(sealKeyPath)).resolves.toBeTruthy();
+      } finally {
+        await server.close({ reason: "psy-core OpenClaw dream catcher E2E complete" });
         envSnapshot.restore();
         await fs.rm(tempHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
       }

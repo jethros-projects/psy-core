@@ -90,7 +90,7 @@
     "test:gbrain": "vitest run tests/gbrain-wrap.test.ts tests/gbrain-real.test.ts",
     "test:gbrain:live": "bash scripts/gbrain-live.sh",
     "test:gbrain:live:ops": "bun run scripts/gbrain-live-operations.ts",
-    "test:e2e:adapters": "npm run build && vitest run --config vitest.e2e.config.ts tests/e2e/ts-adapters-shared-chain.e2e.ts",
+    "test:e2e:adapters": "npm run build && vitest run --config vitest.e2e.config.ts",
     "test:e2e:integrations": "bash scripts/integration-e2e.sh",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",

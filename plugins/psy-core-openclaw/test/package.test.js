@@ -20,6 +20,9 @@ test("package ships agent-facing install docs and bundled skill", () => {
   const manifest = readJson("openclaw.plugin.json");
 
   assert.deepEqual(manifest.skills, ["./skills"]);
+  assert.equal(manifest.configSchema.properties.dreamCatcherEnabled.default, true);
+  assert.equal(manifest.configSchema.properties.dreamCatcherIntervalMs.default, 15000);
+  assert.equal(manifest.configSchema.properties.dreamCatcherIncludeMachineState.default, false);
   assert.ok(pkg.files.includes("AGENT_INSTALL.md"));
   assert.ok(pkg.files.includes("skills"));
   assert.equal(pkg.private, undefined);
@@ -33,6 +36,9 @@ test("package ships agent-facing install docs and bundled skill", () => {
   const skill = readText("skills/psy-core-openclaw/SKILL.md");
   assert.match(skill, /^---\nname: psy-core-openclaw\n/m);
   assert.match(skill, /metadata: \{"openclaw":\{"requires":\{"config":\["plugins\.entries\.psy-core\.enabled"\]\}\}\}/);
+  const dreamCatcherSkill = readText("skills/psy-core-dream-catcher/SKILL.md");
+  assert.match(dreamCatcherSkill, /^---\nname: psy-core-dream-catcher\n/m);
+  assert.match(dreamCatcherSkill, /psy dream-catcher --since 24h/);
 
   const guide = readText("AGENT_INSTALL.md");
   assert.match(guide, /openclaw plugins install <absolute path to plugins\/psy-core-openclaw>/);

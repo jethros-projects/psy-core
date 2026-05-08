@@ -6,12 +6,20 @@ import { auditRecordsForToolCall } from "./tool-records.js";
 export { auditRecordsForToolCall } from "./tool-records.js";
 
 export class PsyOpenClawObserver {
-  constructor({ config, logger = console, ingest = null, getAppConfig, env = process.env } = {}) {
+  constructor({
+    config,
+    logger = console,
+    ingest = null,
+    getAppConfig,
+    env = process.env,
+    dreamCatcher = null,
+  } = {}) {
     this.config = config;
     this.logger = logger;
     this.ingest = ingest;
     this.getAppConfig = getAppConfig || (() => ({}));
     this.env = env;
+    this.dreamCatcher = dreamCatcher;
     this.dedupe = new TtlCache(60_000, 4096);
     this.pending = new TtlCache(60_000, 4096);
   }
@@ -25,6 +33,7 @@ export class PsyOpenClawObserver {
   }
 
   close() {
+    this.dreamCatcher?.close?.();
     this.ingest?.close?.();
   }
 
@@ -56,9 +65,12 @@ export class PsyOpenClawObserver {
       const envelope = this.buildEnvelope(kind, record, callId, event, ctx);
       if (this.config.dryRun) {
         this.logger.info?.(`psy-core-openclaw dry-run ${kind}: ${JSON.stringify(envelope)}`);
-        continue;
+      } else {
+        this.ingest?.send?.(envelope);
       }
-      this.ingest?.send?.(envelope);
+      if (kind === "result") {
+        this.dreamCatcher?.noteObservedRecord?.(record, { appConfig });
+      }
     }
   }
 

@@ -145,6 +145,24 @@ export function createProgram(io: IO = { stdout: process.stdout, stderr: process
     });
 
   program
+    .command('dream-catcher')
+    .description('summarize recent Dream Catcher and memory-promotion changes')
+    .option('--since <since>', 'ISO timestamp or duration like 24h', '24h')
+    .option('--limit <n>', 'maximum matching rows to report', parsePositiveInteger, 100)
+    .option('--json', 'emit JSON')
+    .action(async (opts: { since: string; limit: number; json?: boolean }) => {
+      const store = await openStore();
+      const since = parseSince(opts.since);
+      const report = buildDreamCatcherReport(store.query({ since, limit: Math.max(opts.limit * 10, 500) }), {
+        since,
+        limit: opts.limit,
+      });
+      if (opts.json) io.stdout.write(`${canonicalJson(report)}\n`);
+      else io.stdout.write(formatDreamCatcherReport(report));
+      store.close();
+    });
+
+  program
     .command('verify')
     .option('--all', 'include rotated archives')
     .option('--no-seal', 'skip the sealed head pointer check')
@@ -330,6 +348,121 @@ function formatEvent(event: AuditEvent, color: boolean): string {
   ]
     .filter(Boolean)
     .join(' ') + '\n';
+}
+
+interface DreamCatcherReportChange {
+  seq: number;
+  timestamp: string;
+  operation: string;
+  memory_path: string;
+  outcome: string;
+  actor_id: string | null;
+  tenant_id: string | null;
+  session_id: string | null;
+  event_hash: string;
+}
+
+interface DreamCatcherReport {
+  generated_at: string;
+  since: string;
+  dream_changes: DreamCatcherReportChange[];
+  durable_memory_changes: DreamCatcherReportChange[];
+  counts: {
+    dream_changes: number;
+    durable_memory_changes: number;
+    total: number;
+  };
+}
+
+function buildDreamCatcherReport(events: AuditEvent[], options: { since: Date; limit: number }): DreamCatcherReport {
+  const resultRows = events
+    .filter((event) => event.audit_phase === 'result')
+    .filter((event) => isDreamPath(event.memory_path) || isDurableMemoryPath(event.memory_path))
+    .slice(-options.limit)
+    .map(reportChange);
+  const dreamChanges = resultRows.filter((event) => isDreamPath(event.memory_path));
+  const durableMemoryChanges = resultRows.filter((event) => isDurableMemoryPath(event.memory_path));
+  return {
+    generated_at: new Date().toISOString(),
+    since: options.since.toISOString(),
+    dream_changes: dreamChanges,
+    durable_memory_changes: durableMemoryChanges,
+    counts: {
+      dream_changes: dreamChanges.length,
+      durable_memory_changes: durableMemoryChanges.length,
+      total: resultRows.length,
+    },
+  };
+}
+
+function formatDreamCatcherReport(report: DreamCatcherReport): string {
+  const lines = [
+    'Dream Catcher Report',
+    `Window: ${report.since} -> ${report.generated_at}`,
+    `Changes: ${report.counts.dream_changes} dream artifact(s), ${report.counts.durable_memory_changes} durable memory change(s)`,
+    '',
+  ];
+
+  if (report.counts.total === 0) {
+    lines.push('No dream catcher or durable memory changes were recorded in this window.', '');
+    return lines.join('\n');
+  }
+
+  lines.push('Dream artifacts');
+  if (report.dream_changes.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const change of report.dream_changes) {
+      lines.push(`- ${formatReportChange(change)}`);
+    }
+  }
+
+  lines.push('', 'Durable memory changes');
+  if (report.durable_memory_changes.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const change of report.durable_memory_changes) {
+      lines.push(`- ${formatReportChange(change)}`);
+    }
+  }
+
+  lines.push('', 'Review cue: promote only reviewed dream candidates into MEMORY.md, USER.md, or skills.');
+  return `${lines.join('\n')}\n`;
+}
+
+function reportChange(event: AuditEvent): DreamCatcherReportChange {
+  return {
+    seq: event.seq,
+    timestamp: event.timestamp,
+    operation: event.operation,
+    memory_path: event.memory_path,
+    outcome: event.outcome,
+    actor_id: event.actor_id,
+    tenant_id: event.tenant_id,
+    session_id: event.session_id,
+    event_hash: event.event_hash.slice(0, 12),
+  };
+}
+
+function formatReportChange(change: DreamCatcherReportChange): string {
+  const actor = change.actor_id ? ` actor=${change.actor_id}` : '';
+  const session = change.session_id ? ` session=${change.session_id}` : '';
+  return `${change.timestamp} #${change.seq} ${change.operation} ${change.memory_path} outcome=${change.outcome}${actor}${session} hash=${change.event_hash}`;
+}
+
+function isDreamPath(memoryPath: string): boolean {
+  return (
+    memoryPath === '/memories/DREAMS.md' ||
+    memoryPath === '/memories/dreams.md' ||
+    memoryPath.startsWith('/memories/dreams/') ||
+    memoryPath.startsWith('/memories/dreaming/') ||
+    memoryPath.startsWith('/memories/memory/dreaming/') ||
+    memoryPath.startsWith('/memories/memory/.dreams/')
+  );
+}
+
+function isDurableMemoryPath(memoryPath: string): boolean {
+  return memoryPath === '/memories/MEMORY.md' || memoryPath === '/memories/USER.md';
 }
 
 function parsePositiveInteger(value: string): number {

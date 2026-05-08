@@ -24,6 +24,7 @@ Use this skill after the `psy-core` plugin has been installed or enabled.
    openclaw config set plugins.entries.psy-core.enabled true
    openclaw config set plugins.entries.psy-core.config.actorId "REPLACE_WITH_OPERATOR_ID"
    openclaw config set plugins.entries.psy-core.config.payloadCapture false
+   openclaw config set plugins.entries.psy-core.config.dreamCatcherEnabled true
    ```
 4. Validate and restart:
    ```bash
@@ -42,6 +43,9 @@ Use this skill after the `psy-core` plugin has been installed or enabled.
 
 - Keep `payloadCapture` off unless the user explicitly asks to store redacted
   payload previews.
+- The dream catcher is on by default and audits background Dreaming artifacts
+  such as `DREAMS.md` and `memory/dreaming/**`; leave machine state capture off
+  unless the user explicitly wants `memory/.dreams/**` receipts too.
 - The plugin writes audit rows in-process and does not need `psyBinary`, `npx`,
   or shell execution at runtime.
 - Do not create or edit memory and skill files just to smoke-test the plugin

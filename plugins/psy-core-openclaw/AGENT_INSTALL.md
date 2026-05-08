@@ -47,6 +47,7 @@ The plugin writes to the audit store in-process; it does not need a shell,
 openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "REPLACE_WITH_OPERATOR_ID"
 openclaw config set plugins.entries.psy-core.config.payloadCapture false
+openclaw config set plugins.entries.psy-core.config.dreamCatcherEnabled true
 openclaw config validate
 openclaw gateway restart
 ```
@@ -81,6 +82,9 @@ ask before creating a test memory or skill write.
 - Run install and config commands as the OpenClaw service user.
 - Do not enable `payloadCapture` unless the user explicitly requests memory
   payload previews.
+- The dream catcher is enabled by default for `DREAMS.md` and
+  `memory/dreaming/**`. Do not enable `dreamCatcherIncludeMachineState` unless
+  the user explicitly wants `memory/.dreams/**` receipts.
 - Do not edit existing memory or skill files for a smoke test without approval.
 - Do not use `--dangerously-force-unsafe-install`; current plugin builds avoid
   OpenClaw's dangerous-code patterns.

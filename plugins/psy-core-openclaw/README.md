@@ -84,6 +84,48 @@ verification and troubleshooting.
 | `wiki_status`, `wiki_search`, `wiki_get` | `view` | Covers bundled `memory-wiki` inspection and retrieval tools. |
 | `wiki_lint` | `view` plus `create` or `str_replace` | Captures the wiki read and the persisted `reports/lint.md` report. |
 | `wiki_apply` | `create` / `str_replace` | Covers the bundled `memory-wiki` mutation tool. |
+| background Dreaming writes to `DREAMS.md`, `dreams.md`, or `memory/dreaming/**` | `create`, `str_replace`, `delete` | The dream catcher polls local OpenClaw workspaces for dream artifacts that bypass tool hooks and records result rows with `outcome: "unattributed"`. |
+
+## Dream Catcher
+
+OpenClaw Dreaming can consolidate memories outside the normal file-tool path.
+The plugin now includes a tiny dream catcher that polls known agent workspaces
+for dream artifacts and writes tamper-evident result receipts when they change.
+
+By default it captures the human-reviewable dream ledger:
+
+- `DREAMS.md`
+- `dreams.md`
+- `memory/dreaming/**`
+
+OpenClaw's machine state under `memory/.dreams/**` is off by default to avoid
+noisy implementation-state receipts. Enable it only when you explicitly want to
+audit machine dream state too.
+
+For a human-readable review, install/use the bundled `psy-core-dream-catcher`
+skill or run:
+
+```bash
+PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db" \
+PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" \
+PSY_HEAD_PATH="$HOME/.psy/head.json" \
+  psy dream-catcher --since 24h
+```
+
+To make it a nightly chat ritual, schedule an isolated OpenClaw cron job with
+delivery to your preferred chat channel:
+
+```bash
+openclaw cron add \
+  --name "Dream Catcher nightly" \
+  --cron "0 7 * * *" \
+  --tz "America/Los_Angeles" \
+  --session isolated \
+  --message "Use the psy-core-dream-catcher skill. Run psy dream-catcher --since 24h, verify the audit chain, inspect changed dream artifacts if needed, and send a concise Dream Catcher brief: what changed, where, promotions, and approvals needed." \
+  --announce \
+  --channel slack \
+  --to "channel:C1234567890"
+```
 
 ## Configuration
 
@@ -103,6 +145,9 @@ verification and troubleshooting.
           psyCoreVersion: "0.5.1",
           psyBinary: null,
           payloadCapture: false,
+          dreamCatcherEnabled: true,
+          dreamCatcherIntervalMs: 15000,
+          dreamCatcherIncludeMachineState: false,
           allowAnonymous: false,
           dryRun: false
         }
