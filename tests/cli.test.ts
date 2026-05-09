@@ -64,6 +64,71 @@ describe('CLI', () => {
     }
   });
 
+  it('prints a nightly dream brief for dream and durable memory changes', async () => {
+    const cwd = process.cwd();
+    const project = await initProject();
+    const store = new PsyStore({
+      sqlitePath: project.paths.sqlitePath,
+      archivesPath: project.paths.archivesPath,
+      config: project.config,
+    });
+    store.append(
+      draft({
+        event_id: 'evt-dream',
+        operation_id: 'dream-catcher-1',
+        operation: 'create',
+        audit_phase: 'result',
+        memory_path: '/memories/DREAMS.md',
+        outcome: 'unattributed',
+        timestamp: '2026-05-08T07:00:00.000Z',
+        tool_output_hash: 'b'.repeat(64),
+      }),
+    );
+    store.append(
+      draft({
+        event_id: 'evt-memory',
+        operation_id: 'memory-promote-1',
+        operation: 'str_replace',
+        audit_phase: 'result',
+        memory_path: '/memories/MEMORY.md',
+        timestamp: '2026-05-08T07:05:00.000Z',
+        tool_output_hash: 'c'.repeat(64),
+      }),
+    );
+    store.append(
+      draft({
+        event_id: 'evt-skill',
+        operation_id: 'skill-1',
+        operation: 'str_replace',
+        audit_phase: 'result',
+        memory_path: '/skills/demo/SKILL.md',
+        timestamp: '2026-05-08T07:10:00.000Z',
+        tool_output_hash: 'd'.repeat(64),
+      }),
+    );
+    store.close();
+
+    process.chdir(project.cwd);
+    try {
+      const stdout = new Capture();
+      const stderr = new Capture();
+      const code = await runCli(
+        ['node', 'psy', 'dream-catcher', '--since', '2026-05-08T00:00:00.000Z'],
+        { stdout, stderr },
+      );
+      const output = stdout.toString();
+
+      expect(code).toBe(0);
+      expect(stderr.toString()).toBe('');
+      expect(output).toContain('Dream Catcher Brief');
+      expect(output).toContain('/memories/DREAMS.md');
+      expect(output).toContain('/memories/MEMORY.md');
+      expect(output).not.toContain('/skills/demo/SKILL.md');
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
   it('honors --no-seal as the only way to bypass an unreadable seal key', async () => {
     const cwd = process.cwd();
     const project = await initProject();

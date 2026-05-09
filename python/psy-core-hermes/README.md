@@ -50,7 +50,7 @@ export PSY_HEAD_PATH="$HOME/.hermes/psy/head.json"
 psy tail
 ```
 
-When Hermes writes `MEMORY.md`, `USER.md`, or a skill file, you should see paired `intent` and `result` rows. Verify the chain at any time:
+When Hermes writes `MEMORY.md`, `USER.md`, `DREAMS.md`, a dream artifact, or a skill file, you should see audit rows. Verify the chain at any time:
 
 ```bash
 psy verify --all
@@ -124,17 +124,24 @@ The Python plugin owns observation. The Node `psy` CLI owns the canonical audit 
 | `memory` add to `MEMORY.md` or `USER.md` | `create` | Filesystem watcher |
 | `memory` replace in `MEMORY.md` or `USER.md` | `str_replace` | Filesystem watcher |
 | `memory` remove from `MEMORY.md` or `USER.md` | `delete` | Filesystem watcher |
+| Dream catcher writes to `DREAMS.md`, `dreams.md`, `dreams/**`, `dreaming/**`, or `memory/dreaming/**` | `create`, `str_replace`, or `delete` | Filesystem watcher, usually unattributed |
 | `skill_manage` create skill or file | `create` | `post_tool_call` |
 | `skill_manage` edit or patch skill/file | `str_replace` | `post_tool_call` |
 | `skill_manage` delete skill/file | `delete` | `post_tool_call` |
 
 Hermes handles the `memory` tool inside its agent loop, so there is no normal post-tool hook for memory writes. psy-core-hermes records the pre-tool intent and lets `watchdog` confirm the resulting file change.
 
+The dream catcher uses the same watcher path for sleep-time or background
+consolidation artifacts. If no Hermes tool intent preceded the write, the
+result row is recorded with `outcome: "unattributed"` so the chain still shows
+what changed.
+
 ## What Stays Out of Scope
 
 | Surface | Captured? | Why |
 |---|---:|---|
 | `MEMORY.md` and `USER.md` writes through the built-in `memory` tool | Yes | Core file-backed Hermes memory |
+| `DREAMS.md`, `dreams.md`, `dreams/**`, `dreaming/**`, and `memory/dreaming/**` | Yes | Local dream catcher convention for background consolidation artifacts |
 | Skills written through `skill_manage` | Yes | Durable procedural memory |
 | External MemoryProvider tools such as Honcho, Mem0, Hindsight, RetainDB, Supermemory, and Byterover | No | Separate provider-specific memory surfaces |
 | MemoryProvider lifecycle hooks | No | Becoming a provider would block users from running their chosen provider |

@@ -258,6 +258,8 @@ pip install psy-core-hermes
 psy-core-hermes trust-layer --actor-id you@example.com
 ```
 
+Hermes can also observe configured dream artifact paths such as `DREAMS.md` and `memory/dreaming/**`.
+
 See [python/psy-core-hermes](python/psy-core-hermes/README.md) and [examples/hermes-agent](examples/hermes-agent/README.md).
 
 ### OpenClaw
@@ -270,6 +272,8 @@ openclaw config set plugins.entries.psy-core.enabled true
 openclaw config set plugins.entries.psy-core.config.actorId "you@example.com"
 openclaw gateway restart
 ```
+
+It also runs a Dream Catcher for background Dreaming artifacts such as `DREAMS.md` and `memory/dreaming/**` when those writes bypass tool hooks. Use `psy dream-catcher --since 24h` or the bundled `psy-core-dream-catcher` skill to turn those receipts into a scheduled chat brief.
 
 See [plugins/psy-core-openclaw](plugins/psy-core-openclaw/README.md).
 

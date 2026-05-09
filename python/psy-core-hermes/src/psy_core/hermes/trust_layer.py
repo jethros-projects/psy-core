@@ -45,6 +45,7 @@ Load this skill when the user asks to:
 - verify the psy-core plugin
 - audit Hermes memory
 - inspect what Hermes remembered
+- inspect dream catcher output
 - inspect skill changes
 - investigate surprising personalization
 - investigate skill churn
@@ -78,6 +79,7 @@ Captured:
 
 - memory add/replace/remove targeting `MEMORY.md`
 - memory add/replace/remove targeting `USER.md`
+- filesystem-observed dream catcher changes to `DREAMS.md`, `dreams.md`, `dreams/**`, `dreaming/**`, and `memory/dreaming/**`
 - `skill_manage` create/edit/patch/delete
 - `skill_manage` write_file/remove_file for skill support files
 - filesystem-observed changes to native Hermes memory files
@@ -197,6 +199,20 @@ If a skill is unstable, inspect recent audit events and recommend one of:
 - add pitfalls discovered during failures
 - split the skill into narrower skills
 - replace fragile prose with tested code or scripts
+
+## Dream Catcher Review
+
+Dream files are staging areas for sleep-time or background consolidation. Treat them as candidate memory, not durable truth.
+
+When reviewing dream catcher output:
+
+1. Run `psy verify --all --no-color`.
+2. Query recent dream rows with `psy query --json` and look for paths under `/memories/DREAMS.md`, `/memories/dreams/`, `/memories/dreaming/`, or `/memories/memory/dreaming/`.
+3. Read the dream artifact and separate observations from proposed durable memories.
+4. Promote only accepted, stable facts into `MEMORY.md`, `USER.md`, or a skill.
+5. Verify again after promotion.
+
+If a dream result is `outcome="unattributed"`, that usually means the file changed outside a Hermes memory-tool intent. This is expected for background consolidation and manual review notes.
 
 ## Incident Response
 

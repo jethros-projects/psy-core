@@ -1,6 +1,7 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { normalizeConfig, formatActorRequiredError } from "./config.js";
+import { OpenClawDreamCatcher } from "./dream-catcher.js";
 import { IngestClient } from "./ingest-client.js";
 import { PsyOpenClawObserver } from "./observer.js";
 
@@ -20,11 +21,27 @@ export default definePluginEntry({
     }
 
     const ingest = config.dryRun ? null : new IngestClient({ config, logger: api.logger });
+    let gatewayConfig = null;
+    const getAppConfig = () => {
+      if (gatewayConfig?.agents) return gatewayConfig;
+      if (api.config?.agents) return api.config;
+      const runtimeConfig = api.runtime?.config?.current?.();
+      return runtimeConfig?.agents ? runtimeConfig : api.config ?? runtimeConfig ?? {};
+    };
+    const dreamCatcher = config.dreamCatcherEnabled
+      ? new OpenClawDreamCatcher({
+          config,
+          logger: api.logger,
+          ingest,
+          getAppConfig,
+        })
+      : null;
     const observer = new PsyOpenClawObserver({
       config,
       logger: api.logger,
       ingest,
-      getAppConfig: () => api.config ?? api.runtime?.config?.current?.() ?? {},
+      getAppConfig,
+      dreamCatcher,
     });
 
     api.on("before_tool_call", (event, ctx) => observer.beforeToolCall(event, ctx), {
@@ -35,6 +52,17 @@ export default definePluginEntry({
       priority: 20,
       timeoutMs: config.hookTimeoutMs,
     });
+    api.on(
+      "gateway_start",
+      (_event, ctx) => {
+        gatewayConfig = ctx?.config ?? null;
+        dreamCatcher?.start();
+      },
+      {
+        priority: 20,
+        timeoutMs: config.hookTimeoutMs,
+      },
+    );
     api.on("gateway_stop", () => observer.close(), {
       priority: -20,
       timeoutMs: 1_000,

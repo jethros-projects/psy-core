@@ -173,6 +173,83 @@ def test_watcher_emits_unattributed_when_no_recent_intent(tmp_path: Path) -> Non
     assert results[0]["call_id"].startswith("unattributed-")
 
 
+def test_watcher_catches_root_dream_file_without_pending_intent(tmp_path: Path) -> None:
+    cfg, fake, _handlers, watcher = _build(tmp_path)
+    target = cfg.memories_dir / "DREAMS.md"
+    watcher.start()
+    try:
+        target.write_text("dream consolidation candidate")
+        watcher._on_change(target)
+    finally:
+        watcher.stop()
+
+    result = next(e for e in fake.sent if e["type"] == "result")
+    assert result["operation"] == "create"
+    assert result["outcome"] == "unattributed"
+    assert result["memory_path"] == "/memories/DREAMS.md"
+    assert result["payload"]["content_hash"]
+
+
+def test_watcher_catches_nested_dream_file(tmp_path: Path) -> None:
+    cfg, fake, _handlers, watcher = _build(tmp_path)
+    target = cfg.memories_dir / "dreams" / "2026-05-07.md"
+    target.parent.mkdir(parents=True)
+    watcher.start()
+    try:
+        target.write_text("sleep-time notes")
+        watcher._on_change(target)
+    finally:
+        watcher.stop()
+
+    result = next(e for e in fake.sent if e["type"] == "result")
+    assert result["operation"] == "create"
+    assert result["memory_path"] == "/memories/dreams/2026-05-07.md"
+    assert result["outcome"] == "unattributed"
+
+
+def test_watcher_does_not_fallback_pair_dream_file_to_memory_intent(
+    tmp_path: Path,
+) -> None:
+    cfg, fake, handlers, watcher = _build(tmp_path)
+    handlers.pre_tool_call(
+        tool_name="memory",
+        args={"action": "add", "target": "memory", "content": "global scoped"},
+        tool_call_id="call-memory",
+        session_id="s1",
+    )
+
+    target = cfg.memories_dir / "DREAMS.md"
+    watcher.start()
+    try:
+        target.write_text("background dreaming output")
+        watcher._on_change(target)
+    finally:
+        watcher.stop()
+
+    result = next(e for e in fake.sent if e["type"] == "result")
+    assert result["call_id"].startswith("unattributed-")
+    assert result["memory_path"] == "/memories/DREAMS.md"
+    assert "call-memory" in handlers.pending
+
+
+def test_watcher_emits_delete_for_removed_dream_file(tmp_path: Path) -> None:
+    cfg, fake, _handlers, watcher = _build(tmp_path)
+    target = cfg.memories_dir / "dreaming" / "deep.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("old dream")
+    watcher.start()
+    try:
+        target.unlink()
+        watcher._on_change(target)
+    finally:
+        watcher.stop()
+
+    result = next(e for e in fake.sent if e["type"] == "result")
+    assert result["operation"] == "delete"
+    assert result["memory_path"] == "/memories/dreaming/deep.md"
+    assert result["payload"]["deleted"] is True
+
+
 def test_watcher_debounces_identical_writes(tmp_path: Path) -> None:
     cfg, fake, handlers, watcher = _build(tmp_path)
     target = cfg.memories_dir / "MEMORY.md"

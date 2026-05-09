@@ -103,6 +103,91 @@
       },
       "hook_timeout_ms": {
         "type": "number"
+      },
+      "dreamCatcherEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Poll known OpenClaw workspaces for background Dreaming artifacts."
+      },
+      "dream_catcher_enabled": {
+        "type": "boolean"
+      },
+      "dreamCatcherIntervalMs": {
+        "type": "number",
+        "minimum": 1,
+        "default": 15000,
+        "description": "Dream Catcher polling interval in milliseconds."
+      },
+      "dream_catcher_interval_ms": {
+        "type": "number"
+      },
+      "dreamCatcherIncludeMachineState": {
+        "type": "boolean",
+        "default": false,
+        "description": "Also audit OpenClaw machine dream state under memory/.dreams/**."
+      },
+      "dream_catcher_include_machine_state": {
+        "type": "boolean"
+      },
+      "dreamCatcher": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "intervalMs": {
+                "type": "number",
+                "minimum": 1
+              },
+              "interval_ms": {
+                "type": "number",
+                "minimum": 1
+              },
+              "includeMachineState": {
+                "type": "boolean"
+              },
+              "include_machine_state": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "dream_catcher": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "intervalMs": {
+                "type": "number",
+                "minimum": 1
+              },
+              "interval_ms": {
+                "type": "number",
+                "minimum": 1
+              },
+              "includeMachineState": {
+                "type": "boolean"
+              },
+              "include_machine_state": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
       }
     }
   }

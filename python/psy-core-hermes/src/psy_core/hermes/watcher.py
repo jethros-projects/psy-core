@@ -2,10 +2,10 @@
 
 The Hermes `memory` tool is in `_AGENT_LOOP_TOOLS` upstream, which means
 its results never trigger `post_tool_call`. To produce a paired result
-envelope we observe the filesystem instead: when MEMORY.md or USER.md
-changes, the watcher consults the recent pending-intent map (kept by the
-hook handlers) and emits a result envelope referencing the matching
-`call_id`.
+envelope we observe the filesystem instead: when MEMORY.md, USER.md, or a
+dream artifact changes, the watcher consults the recent pending-intent map
+(kept by the hook handlers) and emits a result envelope referencing the
+matching `call_id` when there is one.
 
 Write detection edge cases that we explicitly handle:
 - atomic rename writes (write-to-temp + os.replace) — caught via
@@ -15,6 +15,8 @@ Write detection edge cases that we explicitly handle:
 - symlink replacement — the watchdog Observer follows the link target
   by default; we additionally hash the target's bytes so a rebound
   symlink (without content change) doesn't produce a spurious event.
+- background dream consolidation that bypasses Hermes tool hooks — emitted
+  as unattributed so the dream ledger remains auditable.
 - writes that DIDN'T originate from a tool call we observed — emit with
   outcome="unattributed" so the chain still records them.
 """
@@ -40,7 +42,14 @@ if TYPE_CHECKING:
 LOG = logging.getLogger("psy_core.hermes.watcher")
 
 #: Files we watch by default (relative to `memories_dir`).
-DEFAULT_WATCH_FILES: tuple[str, ...] = ("MEMORY.md", "USER.md")
+DEFAULT_WATCH_FILES: tuple[str, ...] = (
+    "MEMORY.md",
+    "USER.md",
+    "DREAMS.md",
+    "dreams.md",
+)
+#: Directories we watch by default (relative to `memories_dir`).
+DEFAULT_WATCH_DIRS: tuple[str, ...] = ("dreams", "dreaming", "memory/dreaming")
 #: Debounce window for coalescing rapid filesystem events on the same path.
 DEBOUNCE_S = 0.05
 #: How long after an intent we'll still pair a filesystem change with it.
@@ -70,12 +79,14 @@ class MemoryWatcher:
         hooks: HookHandlers,
         ingest: IngestClient,
         watch_files: Iterable[str] = DEFAULT_WATCH_FILES,
+        watch_dirs: Iterable[str] = DEFAULT_WATCH_DIRS,
         log: logging.Logger | None = None,
     ) -> None:
         self._config = config
         self._hooks = hooks
         self._ingest = ingest
         self._watch_files = tuple(watch_files)
+        self._watch_dirs = tuple(watch_dirs)
         self._log = log or LOG
         self._observer: Any | None = None
         self._last_seen: dict[Path, _LastSeen] = {}
@@ -103,12 +114,9 @@ class MemoryWatcher:
         from watchdog.events import FileSystemEvent, FileSystemEventHandler
         from watchdog.observers import Observer
 
-        watch_paths = {memories_dir / name for name in self._watch_files}
-
         # Seed each file's known digest so the first inotify event after
         # startup doesn't fire spuriously for a no-op stat.
-        for path in watch_paths:
-            self._last_seen[path] = _LastSeen(digest=_safe_hash(path), at=time.monotonic())
+        self._seed_watch_state()
 
         watcher = self
 
@@ -117,7 +125,7 @@ class MemoryWatcher:
                 if event.is_directory:
                     return
                 path = Path(os.fsdecode(event.src_path))
-                if path in watch_paths:
+                if watcher._is_watched_path(path):
                     watcher._on_change(path)
 
             def on_moved(self, event: FileSystemEvent) -> None:
@@ -126,21 +134,41 @@ class MemoryWatcher:
                 # atomic-rename pattern: a temp file is renamed onto the
                 # watched path. Treat the destination as the change target.
                 dest = Path(os.fsdecode(getattr(event, "dest_path", "") or ""))
-                if dest and dest in watch_paths:
+                if dest and watcher._is_watched_path(dest):
                     watcher._on_change(dest)
 
             def on_created(self, event: FileSystemEvent) -> None:
                 if event.is_directory:
                     return
                 path = Path(os.fsdecode(event.src_path))
-                if path in watch_paths:
+                if watcher._is_watched_path(path):
+                    watcher._on_change(path)
+
+            def on_deleted(self, event: FileSystemEvent) -> None:
+                if event.is_directory:
+                    return
+                path = Path(os.fsdecode(event.src_path))
+                if watcher._is_watched_path(path):
                     watcher._on_change(path)
 
         self._observer = Observer()
-        self._observer.schedule(_Handler(), str(memories_dir), recursive=False)
+        self._observer.schedule(_Handler(), str(memories_dir), recursive=True)
         self._observer.start()
         self._started = True
         self._log.info("psy-core-hermes watcher started on %s", memories_dir)
+
+    def _seed_watch_state(self) -> None:
+        now = time.monotonic()
+        for name in self._watch_files:
+            path = (self._config.memories_dir / name).resolve(strict=False)
+            self._last_seen[path] = _LastSeen(digest=_safe_hash(path), at=now)
+        for dirname in self._watch_dirs:
+            root = self._config.memories_dir / dirname
+            if not root.exists():
+                continue
+            for path in (p.resolve(strict=False) for p in _iter_files(root)):
+                if self._is_watched_path(path):
+                    self._last_seen[path] = _LastSeen(digest=_safe_hash(path), at=now)
 
     def stop(self) -> None:
         if not self._started or self._observer is None:
@@ -150,7 +178,23 @@ class MemoryWatcher:
             self._observer.join(timeout=2.0)
         self._started = False
 
+    def _is_watched_path(self, path: Path) -> bool:
+        relative = _relative_to(self._config.memories_dir, path)
+        if relative is None:
+            return False
+        relative_text = relative.as_posix()
+        if relative_text in self._watch_files:
+            return True
+        for dirname in self._watch_dirs:
+            prefix = Path(dirname).as_posix().rstrip("/")
+            if relative_text.startswith(f"{prefix}/"):
+                return True
+        return False
+
     def _on_change(self, path: Path) -> None:
+        path = path.resolve(strict=False)
+        if not self._is_watched_path(path):
+            return
         now = time.monotonic()
         digest = _safe_hash(path)
         with self._lock:
@@ -158,6 +202,10 @@ class MemoryWatcher:
             if last is None:
                 last = _LastSeen()
                 self._last_seen[path] = last
+            previous_digest = last.digest
+            if digest is None and previous_digest is None:
+                last.at = now
+                return
             if now - last.at < DEBOUNCE_S and digest == last.digest:
                 return  # debounce: same content within debounce window
             if digest is not None and digest == last.digest:
@@ -170,7 +218,8 @@ class MemoryWatcher:
 
         # Try to pair this change back to a recent pending intent.
         pending = self._best_pending_for_change(path, within_s=PAIR_WINDOW_S)
-        envelope = self._build_envelope(path, digest, pending)
+        operation = _operation_for_change(previous_digest, digest, pending)
+        envelope = self._build_envelope(path, digest, pending, operation)
         if self._config.dry_run:
             self._log.info("psy-core-hermes dry-run watcher: %s", envelope)
             return
@@ -186,7 +235,7 @@ class MemoryWatcher:
         """
         from psy_core.hermes.hooks import PendingIntent  # local import — avoids cycle
 
-        memory_path = f"/memories/{path.name}"
+        memory_path = _memory_path_for_path(self._config.memories_dir, path)
         cutoff = time.monotonic() - within_s
         exact_candidate: PendingIntent | None = None
         fallback_candidate: PendingIntent | None = None
@@ -207,7 +256,9 @@ class MemoryWatcher:
                     or entry.enqueued_at > fallback_candidate.enqueued_at
                 ):
                     fallback_candidate = entry
-            candidate = exact_candidate or fallback_candidate
+            candidate = exact_candidate
+            if candidate is None and _allows_pending_fallback(self._config.memories_dir, path):
+                candidate = fallback_candidate
             if candidate is not None:
                 self._hooks.pending.pop(candidate.call_id, None)
         return candidate
@@ -217,12 +268,13 @@ class MemoryWatcher:
         path: Path,
         digest: str | None,
         pending: Any,
+        operation: str,
     ) -> dict[str, Any]:
-        memory_path = f"/memories/{path.name}"
+        memory_path = _memory_path_for_path(self._config.memories_dir, path)
         if pending is not None:
             envelope: dict[str, Any] = {
                 "type": "result",
-                "operation": pending.operation,
+                "operation": operation,
                 "call_id": pending.call_id,
                 "memory_path": memory_path,
                 "source": "psy-core-hermes-watcher",
@@ -232,8 +284,8 @@ class MemoryWatcher:
         else:
             envelope = {
                 "type": "result",
-                "operation": "create",
-                "call_id": f"unattributed-{int(time.monotonic() * 1000)}-{path.name}",
+                "operation": operation,
+                "call_id": _unattributed_call_id(memory_path),
                 "memory_path": memory_path,
                 "source": "psy-core-hermes-watcher",
                 "outcome": "unattributed",
@@ -247,8 +299,13 @@ class MemoryWatcher:
             envelope["identity"] = identity_block
         if self._config.purpose:
             envelope["purpose"] = self._config.purpose
-        if self._config.payload_capture and digest:
-            envelope["payload"] = {"content_hash": digest, "path": str(path)}
+        if self._config.payload_capture:
+            payload: dict[str, Any] = {"path": str(path)}
+            if digest:
+                payload["content_hash"] = digest
+            if operation == "delete":
+                payload["deleted"] = True
+            envelope["payload"] = payload
         return envelope
 
 
@@ -262,3 +319,52 @@ def _safe_hash(path: Path) -> str | None:
             return digest.hexdigest()
     except (FileNotFoundError, OSError):
         return None
+
+
+def _iter_files(root: Path) -> Iterable[Path]:
+    try:
+        for path in root.rglob("*"):
+            if path.is_file():
+                yield path
+    except OSError:
+        return
+
+
+def _relative_to(root: Path, path: Path) -> Path | None:
+    try:
+        return path.resolve(strict=False).relative_to(root.resolve(strict=False))
+    except ValueError:
+        return None
+
+
+def _memory_path_for_path(memories_dir: Path, path: Path) -> str:
+    relative = _relative_to(memories_dir, path)
+    if relative is None:
+        return f"/memories/{path.name}"
+    return f"/memories/{relative.as_posix()}"
+
+
+def _allows_pending_fallback(memories_dir: Path, path: Path) -> bool:
+    relative = _relative_to(memories_dir, path)
+    return relative is not None and relative.as_posix() in {"MEMORY.md", "USER.md"}
+
+
+def _operation_for_change(
+    previous_digest: str | None,
+    digest: str | None,
+    pending: Any,
+) -> str:
+    if pending is not None:
+        operation = getattr(pending, "operation", None)
+        if isinstance(operation, str):
+            return operation
+    if digest is None:
+        return "delete"
+    if previous_digest is None:
+        return "create"
+    return "str_replace"
+
+
+def _unattributed_call_id(memory_path: str) -> str:
+    suffix = memory_path.removeprefix("/memories/").replace("/", "-")
+    return f"unattributed-{int(time.monotonic() * 1000)}-{suffix}"

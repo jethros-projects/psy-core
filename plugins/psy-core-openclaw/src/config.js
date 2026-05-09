@@ -7,6 +7,11 @@ export const DEFAULT_AGENT_ID = "main";
 
 export function normalizeConfig(rawConfig = {}, env = process.env) {
   const raw = isRecord(rawConfig) ? rawConfig : {};
+  const dreamCatcher = isRecord(raw.dreamCatcher)
+    ? raw.dreamCatcher
+    : isRecord(raw.dream_catcher)
+      ? raw.dream_catcher
+      : {};
   const configuredPsyVersion = readString(raw, "psyCoreVersion", "psy_core_version");
   const dbPath = resolveUserPath(
     readString(raw, "dbPath", "db_path") || env.PSY_AUDIT_DB_PATH || "~/.psy/audit.db",
@@ -33,6 +38,26 @@ export function normalizeConfig(rawConfig = {}, env = process.env) {
     dryRun: readBoolean(raw, false, "dryRun", "dry_run"),
     allowAnonymous: readBoolean(raw, false, "allowAnonymous", "allow_anonymous"),
     hookTimeoutMs: readPositiveInt(raw, 5_000, "hookTimeoutMs", "hook_timeout_ms"),
+    dreamCatcherEnabled: readBoolean(
+      raw,
+      readBoolean(dreamCatcher, true, "enabled"),
+      "dreamCatcherEnabled",
+      "dream_catcher_enabled",
+      "dreamCatcher",
+      "dream_catcher",
+    ),
+    dreamCatcherIntervalMs: readPositiveInt(
+      raw,
+      readPositiveInt(dreamCatcher, 15_000, "intervalMs", "interval_ms"),
+      "dreamCatcherIntervalMs",
+      "dream_catcher_interval_ms",
+    ),
+    dreamCatcherIncludeMachineState: readBoolean(
+      raw,
+      readBoolean(dreamCatcher, false, "includeMachineState", "include_machine_state"),
+      "dreamCatcherIncludeMachineState",
+      "dream_catcher_include_machine_state",
+    ),
   };
 }
 
@@ -89,6 +114,26 @@ export function resolveWorkspaceForEvent(appConfig, ctx = {}, env = process.env)
     return path.join(resolveUserPath(defaultWorkspace, env), agentId);
   }
   return path.join(resolveStateDir(env), `workspace-${agentId}`);
+}
+
+export function resolveKnownWorkspaceDirs(appConfig, env = process.env) {
+  const entries = Array.isArray(appConfig?.agents?.list) ? appConfig.agents.list : [];
+  const agentIds = new Set([resolveDefaultAgentId(appConfig)]);
+  for (const entry of entries) {
+    if (isRecord(entry) && trimString(entry.id)) {
+      agentIds.add(normalizeAgentId(entry.id));
+    }
+  }
+
+  const workspaces = [];
+  const seen = new Set();
+  for (const agentId of agentIds) {
+    const workspace = resolveWorkspaceForEvent(appConfig, { agentId }, env);
+    if (!workspace || seen.has(workspace)) continue;
+    seen.add(workspace);
+    workspaces.push(workspace);
+  }
+  return workspaces;
 }
 
 export function resolveStateDir(env = process.env) {

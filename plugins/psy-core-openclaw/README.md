@@ -123,6 +123,7 @@ The OpenClaw plugin owns observation. The psy-core audit engine owns the canonic
 | `wiki_status`, `wiki_search`, `wiki_get` | `view` | Bundled `memory-wiki` inspection and retrieval tools |
 | `wiki_lint` | `view` plus `create` or `str_replace` | Captures wiki read plus persisted `reports/lint.md` |
 | `wiki_apply` | `create` or `str_replace` | Bundled `memory-wiki` mutation tool |
+| background Dreaming writes to `DREAMS.md`, `dreams.md`, or `memory/dreaming/**` | `create`, `str_replace`, or `delete` | Dream Catcher polls local OpenClaw workspaces for dream artifacts that bypass tool hooks |
 
 ## What Stays Out of Scope
 
@@ -131,6 +132,7 @@ The OpenClaw plugin owns observation. The psy-core audit engine owns the canonic
 | OpenClaw memory and skill files through supported tools | Yes | Core durable memory and procedural memory |
 | Skill Workshop writes | Yes | Durable procedural memory |
 | Bundled `memory-lancedb` and `memory-wiki` tools | Yes | Durable memory surfaces exposed through OpenClaw tools |
+| Direct filesystem edits to dream artifacts | Yes | Only for the Dream Catcher paths listed above |
 | General project files outside memory and skill roots | No | Not operational memory |
 | LLM calls, shell commands, browser actions, and ordinary tool calls | No | Separate behavior or observability surfaces |
 | External memory providers not exposed through OpenClaw's supported memory tools | No | Provider-specific adapters should own those surfaces |
@@ -149,6 +151,8 @@ If your app also calls Mem0, Letta, LangChain, LangGraph, GBrain, or Hermes dire
 | Enable the plugin | `openclaw config set plugins.entries.psy-core.enabled true` |
 | Set required identity | `openclaw config set plugins.entries.psy-core.config.actorId "you@example.com"` |
 | Keep payload previews off | `openclaw config set plugins.entries.psy-core.config.payloadCapture false` |
+| Enable Dream Catcher | `openclaw config set plugins.entries.psy-core.config.dreamCatcherEnabled true` |
+| Read the morning dream brief | `psy dream-catcher --since 24h` |
 | Validate OpenClaw config | `openclaw config validate` |
 | Restart the gateway | `openclaw gateway restart` |
 | Inspect plugin state | `openclaw plugins inspect psy-core --json` |
@@ -201,7 +205,50 @@ psy verify --all.
 Do not enable payloadCapture unless I explicitly ask.
 ```
 
-The plugin also installs the `psy-core-openclaw` skill. Once enabled, that skill gives OpenClaw a compact checklist for setup verification and troubleshooting.
+The plugin also installs the `psy-core-openclaw` and `psy-core-dream-catcher`
+skills. Once enabled, those skills give OpenClaw compact checklists for setup
+verification, troubleshooting, and daily Dream Catcher briefs.
+
+## Dream Catcher
+
+OpenClaw Dreaming can consolidate memories outside the normal file-tool path.
+The plugin includes a small dream catcher that polls known agent workspaces for
+dream artifacts and writes tamper-evident result receipts when they change.
+
+By default it captures the human-reviewable dream ledger:
+
+- `DREAMS.md`
+- `dreams.md`
+- `memory/dreaming/**`
+
+OpenClaw's machine state under `memory/.dreams/**` is off by default to avoid
+noisy implementation-state receipts. Enable it only when you explicitly want to
+audit machine dream state too.
+
+For a morning dream brief, install/use the bundled `psy-core-dream-catcher`
+skill or run:
+
+```bash
+PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db" \
+PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" \
+PSY_HEAD_PATH="$HOME/.psy/head.json" \
+  psy dream-catcher --since 24h
+```
+
+To make it a nightly chat ritual, schedule an isolated OpenClaw cron job with
+delivery to your preferred chat channel:
+
+```bash
+openclaw cron add \
+  --name "Dream Catcher morning brief" \
+  --cron "0 9 * * *" \
+  --tz "America/Los_Angeles" \
+  --session isolated \
+  --message "Use the psy-core-dream-catcher skill. Run psy dream-catcher --since 24h, verify the audit chain, inspect changed dream artifacts if needed, and send a concise Dream Catcher brief: what changed, where, promotions, and approvals needed." \
+  --announce \
+  --channel slack \
+  --to "channel:C1234567890"
+```
 
 ## Configuration
 
@@ -230,6 +277,9 @@ Full `plugins.entries.psy-core.config` reference:
           // Runtime behavior
           dryRun: false,
           hookTimeoutMs: 5000,
+          dreamCatcherEnabled: true,
+          dreamCatcherIntervalMs: 15000,
+          dreamCatcherIncludeMachineState: false,
 
           // Deprecated compatibility fields; ignored by current plugin builds.
           psyCoreVersion: "0.5.1",
