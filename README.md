@@ -4,7 +4,7 @@ Your AI agent is smart. Its memory is mutable. psy-core gives every durable memo
 
 Packages: `psy-core` for Node SDKs and the CLI, `psy-core-hermes` for Hermes Agent, and `psy-core-openclaw` for OpenClaw.
 
-Docs: [psy-core npm](https://www.npmjs.com/package/psy-core), [Hermes plugin](python/psy-core-hermes/README.md), [Hermes example](examples/hermes-agent/README.md), [OpenClaw plugin](plugins/psy-core-openclaw/README.md), [OpenClaw agent install](plugins/psy-core-openclaw/AGENT_INSTALL.md), [OpenClaw npm](https://www.npmjs.com/package/psy-core-openclaw), [AGENTS.md](AGENTS.md), [llms.txt](llms.txt), [Issues](https://github.com/jethros-projects/psy-core/issues).
+Docs: [psy-core npm](https://www.npmjs.com/package/psy-core), [Hermes plugin](python/psy-core-hermes/README.md), [Hermes example](examples/hermes-agent/README.md), [OpenClaw plugin](plugins/psy-core-openclaw/README.md), [Dream Catcher](plugins/psy-core-openclaw/DREAM_CATCHER.md), [OpenClaw agent install](plugins/psy-core-openclaw/AGENT_INSTALL.md), [OpenClaw npm](https://www.npmjs.com/package/psy-core-openclaw), [AGENTS.md](AGENTS.md), [llms.txt](llms.txt), [Issues](https://github.com/jethros-projects/psy-core/issues).
 
 Agents do not just answer questions anymore. They update user profiles, rewrite working memory, create skills, save checkpoints, sync semantic stores, and carry facts from one session into the next. That is not chat history. That is operational state.
 
@@ -62,7 +62,7 @@ psy-core has two first-class agent plugins for systems that already manage memor
 | Agent | Install | What psy-core sees | Start here |
 |---|---|---|---|
 | Hermes Agent | `pip install psy-core-hermes` | `MEMORY.md`, `USER.md`, and `skill_manage` writes streamed through `psy ingest` | [Hermes plugin](python/psy-core-hermes/README.md) and [Hermes example](examples/hermes-agent/README.md) |
-| OpenClaw | `openclaw plugins install psy-core-openclaw` | `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, Skill Workshop, LanceDB memory, and memory-wiki | [OpenClaw plugin](plugins/psy-core-openclaw/README.md) and [agent install guide](plugins/psy-core-openclaw/AGENT_INSTALL.md) |
+| OpenClaw | `openclaw plugins install psy-core-openclaw` | `MEMORY.md`, `USER.md`, `DREAMS.md`, `memory/**`, skills, Skill Workshop, LanceDB memory, and memory-wiki | [OpenClaw plugin](plugins/psy-core-openclaw/README.md), [Dream Catcher](plugins/psy-core-openclaw/DREAM_CATCHER.md), and [agent install guide](plugins/psy-core-openclaw/AGENT_INSTALL.md) |
 
 Both keep the host agent's normal memory workflow. psy-core only adds the receipt layer: paired `intent` / `result` rows, hash-chain verification, and a sealed tail.
 
@@ -362,6 +362,7 @@ For the full threat model, use [SECURITY.md](SECURITY.md).
 | Audit GBrain | [GBrain](#gbrain) |
 | Audit Hermes Agent | [python/psy-core-hermes](python/psy-core-hermes/README.md) |
 | Audit OpenClaw | [plugins/psy-core-openclaw](plugins/psy-core-openclaw/README.md) |
+| Set up Dream Catcher | [plugins/psy-core-openclaw/DREAM_CATCHER.md](plugins/psy-core-openclaw/DREAM_CATCHER.md) |
 | Try the Hermes integration end to end | [examples/hermes-agent](examples/hermes-agent/README.md) |
 | Understand integrity checks | [The Audit Loop](#the-audit-loop) and [Guarantees and Limits](#guarantees-and-limits) |
 | Wire a non-Node observer | `psy ingest` in [CLI Quick Reference](#cli-quick-reference) |

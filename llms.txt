@@ -41,6 +41,7 @@ OpenClaw plugin: https://www.npmjs.com/package/psy-core-openclaw
 
 - python/psy-core-hermes/README.md: Hermes Agent plugin, trust-layer command, hook model, captured surfaces, operator reference.
 - plugins/psy-core-openclaw/README.md: OpenClaw plugin, hook model, captured surfaces, operator reference.
+- plugins/psy-core-openclaw/DREAM_CATCHER.md: Dream Catcher product flow, canonical prompt, morning brief shape, scheduling, and safety model.
 - examples/hermes-agent/README.md: local Hermes walkthrough.
 
 ## Test map

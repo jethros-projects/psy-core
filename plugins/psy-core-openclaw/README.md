@@ -2,7 +2,7 @@
 
 OpenClaw agents can change their own memory. psy-core-openclaw gives those changes receipts.
 
-Package: [`psy-core-openclaw`](https://www.npmjs.com/package/psy-core-openclaw). Core: [psy-core](../../README.md). Agent setup: [AGENT_INSTALL.md](AGENT_INSTALL.md). Issues: [GitHub Issues](https://github.com/jethros-projects/psy-core/issues).
+Package: [`psy-core-openclaw`](https://www.npmjs.com/package/psy-core-openclaw). Core: [psy-core](../../README.md). Dream Catcher: [DREAM_CATCHER.md](DREAM_CATCHER.md). Agent setup: [AGENT_INSTALL.md](AGENT_INSTALL.md). Issues: [GitHub Issues](https://github.com/jethros-projects/psy-core/issues).
 
 OpenClaw memory is operational state. It can shape future tool use, personalization, skill selection, semantic recall, dreams, and memory-wiki updates. When that state changes, operators need to know what was attempted, what succeeded, and whether the log still verifies.
 
@@ -39,7 +39,7 @@ openclaw plugins install ./plugins/psy-core-openclaw
 Install `psy-core` only when you want the CLI for verification, tailing, or querying:
 
 ```bash
-npm install -g psy-core@0.5.1
+npm install -g psy-core@0.6.0
 export PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db"
 export PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key"
 export PSY_HEAD_PATH="$HOME/.psy/head.json"
@@ -177,7 +177,7 @@ openclaw gateway restart
 Install the CLI only for operator commands:
 
 ```bash
-npm install -g psy-core@0.5.1
+npm install -g psy-core@0.6.0
 PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db" \
 PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" \
 PSY_HEAD_PATH="$HOME/.psy/head.json" \
@@ -198,7 +198,7 @@ plugins/psy-core-openclaw/AGENT_INSTALL.md as the procedure. Run all commands as
 the same service user that runs OpenClaw. Keep the plugin under a durable local
 path, enable plugins.entries.psy-core, set plugins.entries.psy-core.config.actorId
 to my operator identity, restart the OpenClaw gateway, and verify with
-openclaw plugins inspect psy-core --json. Install psy-core@0.5.1 only if you
+openclaw plugins inspect psy-core --json. Install psy-core@0.6.0 only if you
 need the psy CLI, then verify the chain with PSY_AUDIT_DB_PATH="$HOME/.psy/audit.db"
 PSY_SEAL_KEY_PATH="$HOME/.psy/seal-key" PSY_HEAD_PATH="$HOME/.psy/head.json"
 psy verify --all.
@@ -214,6 +214,9 @@ verification, troubleshooting, and daily Dream Catcher briefs.
 OpenClaw Dreaming can consolidate memories outside the normal file-tool path.
 The plugin includes a small dream catcher that polls known agent workspaces for
 dream artifacts and writes tamper-evident result receipts when they change.
+
+For the product-facing setup flow, canonical prompt, and morning brief shape,
+see [Dream Catcher](DREAM_CATCHER.md).
 
 By default it captures the human-reviewable dream ledger:
 
@@ -282,7 +285,7 @@ Full `plugins.entries.psy-core.config` reference:
           dreamCatcherIncludeMachineState: false,
 
           // Deprecated compatibility fields; ignored by current plugin builds.
-          psyCoreVersion: "0.5.1",
+          psyCoreVersion: "0.6.0",
           psyBinary: null
         }
       }
@@ -341,15 +344,16 @@ For shared machines, hosted agents, or any real user data, set `actorId`.
 | Understand the core audit chain | [Root psy-core README](../../README.md) |
 | Install through an OpenClaw agent | [Agent install guide](AGENT_INSTALL.md) |
 | Give OpenClaw an operating checklist | [`skills/psy-core-openclaw/SKILL.md`](skills/psy-core-openclaw/SKILL.md) |
+| Set up a morning Dream Catcher brief | [Dream Catcher](DREAM_CATCHER.md) |
 | Inspect captured surfaces | [What Gets Captured](#what-gets-captured) |
 | Verify audit integrity | `psy verify --all` |
 | Report an issue | [GitHub Issues](https://github.com/jethros-projects/psy-core/issues) |
 
 ## Versioning and Compatibility
 
-This package version: `psy-core-openclaw 0.1.2`
+This package version: `psy-core-openclaw 0.2.0`
 
-Pinned operator CLI shown in docs: `psy-core 0.5.1`
+Pinned operator CLI shown in docs: `psy-core 0.6.0`
 
 Verified OpenClaw contracts:
 

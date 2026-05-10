@@ -44,7 +44,7 @@ openclaw plugins install "$repo/plugins/psy-core-openclaw"
 ```
 
 If the user gave a branch or tag, set `PSY_CORE_REF` before running the block.
-Install `psy-core@0.5.1` separately only when the user wants the `psy` CLI for
+Install `psy-core@0.6.0` separately only when the user wants the `psy` CLI for
 verification, tailing, or querying the audit chain.
 
 ## Configure
@@ -117,7 +117,7 @@ Next useful command: psy tail
 
 - `openclaw plugins install` fails because config is invalid: run
   `openclaw doctor --fix`, then retry.
-- `psy` is not found during verification: install `psy-core@0.5.1` as the
+- `psy` is not found during verification: install `psy-core@0.6.0` as the
   service user. The plugin itself does not need the CLI.
 - Plugin appears installed but no hooks run: check
   `openclaw plugins inspect psy-core --json`, confirm it is enabled, and restart

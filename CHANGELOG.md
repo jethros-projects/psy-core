@@ -10,6 +10,26 @@ A schema bump only happens when the event row shape changes incompatibly.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-09
+
+### Added
+
+- **Dream Catcher.** Added `psy dream-catcher` for morning dream briefs over
+  recent dream artifacts and durable-memory promotions.
+- **OpenClaw Dream Catcher.** Added background capture for OpenClaw Dreaming
+  artifacts such as `DREAMS.md`, `dreams.md`, and `memory/dreaming/**`, plus
+  the bundled `psy-core-dream-catcher` skill and dedicated Dream Catcher docs.
+- **Hermes dream artifact watching.** Extended `psy-core-hermes` watcher
+  coverage to include local dream artifact paths and result-only receipts for
+  background consolidation writes.
+
+### Changed
+
+- Updated OpenClaw and Hermes docs to use the Dream Catcher product language,
+  including the canonical "morning dream brief" setup flow.
+- Updated Hermes and OpenClaw fallback/default references to pin the Node audit
+  engine at `psy-core@0.6.0`.
+
 ## [0.5.1] - 2026-05-04
 
 ### Added
@@ -158,7 +178,8 @@ Initial public release of `psy-core`.
 - Windows path-guard support is not currently provided; the seal
   infrastructure works cross-platform.
 
-[Unreleased]: https://github.com/jethros-projects/psy-core/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/jethros-projects/psy-core/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jethros-projects/psy-core/releases/tag/v0.6.0
 [0.5.1]: https://github.com/jethros-projects/psy-core/releases/tag/v0.5.1
 [0.5.0]: https://github.com/jethros-projects/psy-core/releases/tag/v0.5.0
 [0.4.0]: https://github.com/jethros-projects/psy-core/releases/tag/v0.4.0

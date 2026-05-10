@@ -1,6 +1,6 @@
 {
   "name": "psy-core",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Tamper-evident receipts for AI agent memory operations. Adapters for memory SDKs, plus plugins for Hermes and OpenClaw.",
   "type": "module",
   "license": "MIT",
@@ -83,6 +83,7 @@
     "examples",
     "python/psy-core-hermes/README.md",
     "plugins/psy-core-openclaw/README.md",
+    "plugins/psy-core-openclaw/DREAM_CATCHER.md",
     "plugins/psy-core-openclaw/AGENT_INSTALL.md"
   ],
   "scripts": {

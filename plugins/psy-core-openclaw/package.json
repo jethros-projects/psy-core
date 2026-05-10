@@ -1,6 +1,6 @@
 {
   "name": "psy-core-openclaw",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "OpenClaw plugin that audits memory and skill access into a psy-core tamper-evident chain.",
   "type": "module",
   "license": "MIT",
@@ -22,6 +22,7 @@
   },
   "files": [
     "AGENT_INSTALL.md",
+    "DREAM_CATCHER.md",
     "README.md",
     "openclaw.plugin.json",
     "skills",
@@ -32,7 +33,7 @@
       "./src/index.js"
     ],
     "install": {
-      "npmSpec": "psy-core-openclaw@0.1.2",
+      "npmSpec": "psy-core-openclaw@0.2.0",
       "localPath": "plugins/psy-core-openclaw",
       "defaultChoice": "npm",
       "minHostVersion": ">=2026.4.29"

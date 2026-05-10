@@ -26,7 +26,7 @@ Use this skill after the `psy-core` plugin has been installed or enabled. The jo
    ```
 2. Install the `psy` CLI only if verification/tailing is needed:
    ```bash
-   command -v psy || npm install -g psy-core@0.5.1
+   command -v psy || npm install -g psy-core@0.6.0
    ```
 3. Set the required config:
    ```bash
