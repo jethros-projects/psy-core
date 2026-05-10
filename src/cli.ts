@@ -412,7 +412,7 @@ function formatDreamCatcherReport(report: DreamCatcherReport): string {
   ];
 
   if (report.counts.total === 0) {
-    lines.push('No dream catcher or durable memory changes were recorded in this window.', '');
+    lines.push('No dream or durable-memory changes found.', '');
     return lines.join('\n');
   }
 

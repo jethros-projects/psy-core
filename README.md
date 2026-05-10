@@ -391,6 +391,12 @@ npm run typecheck
 npm run build
 ```
 
+Full release verification, including package dry-runs and live OpenClaw/Hermes/GBrain integration checks:
+
+```bash
+npm run verify:release
+```
+
 GBrain live validation expects a local GBrain checkout and Bun:
 
 ```bash

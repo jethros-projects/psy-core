@@ -427,6 +427,12 @@ describe("psy-core OpenClaw gateway E2E", () => {
           events.some((event) => event.memory_path === "/memories/DREAMS.md"),
         );
         const dreamRow = rows.find((event) => event.memory_path === "/memories/DREAMS.md");
+        expect(
+          rows.some(
+            (event) =>
+              event.memory_path === "/memories/DREAMS.md" && event.audit_phase === "intent",
+          ),
+        ).toBe(false);
         expect(dreamRow).toMatchObject({
           audit_phase: "result",
           operation: "create",

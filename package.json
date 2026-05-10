@@ -100,7 +100,8 @@
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "verify": "npm run typecheck && npm test && npm run build",
-    "verify:e2e": "npm run verify && npm run test:e2e:integrations",
+    "verify:e2e": "npm run verify:release",
+    "verify:release": "bash scripts/integration-e2e.sh",
     "prepack": "npm run build"
   },
   "engines": {

@@ -51,6 +51,10 @@ function jsonLine(value: unknown): string {
 describe('built psy dream-catcher CLI E2E', () => {
   it('summarizes ingested dream artifacts and durable memory promotions', async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), 'psy-dream-catcher-e2e-'));
+    const version = await runPsy(cwd, ['--version']);
+    expect(version.code, version.stderr).toBe(0);
+    expect(version.stdout.trim()).toBe('0.6.0');
+
     const init = await runPsy(cwd, ['init', '--no-color']);
     expect(init.code, init.stderr).toBe(0);
 
@@ -143,6 +147,21 @@ describe('built psy dream-catcher CLI E2E', () => {
     expect(textReport.stdout).toContain('/memories/MEMORY.md');
     expect(textReport.stdout).not.toContain('/skills/noise/SKILL.md');
     expect(textReport.stdout).not.toContain('/memories/dreaming/old.md');
+
+    const verify = await runPsy(cwd, ['verify', '--all', '--no-color']);
+    expect(verify.code, verify.stderr).toBe(0);
+    expect(verify.stdout).toContain('verification passed');
+  }, 30_000);
+
+  it('prints a quiet verified brief when no dream or durable-memory rows changed', async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), 'psy-dream-catcher-empty-e2e-'));
+    const init = await runPsy(cwd, ['init', '--no-color']);
+    expect(init.code, init.stderr).toBe(0);
+
+    const textBrief = await runPsy(cwd, ['dream-catcher', '--since', '2026-05-08T00:00:00.000Z']);
+    expect(textBrief.code, textBrief.stderr).toBe(0);
+    expect(textBrief.stdout).toContain('Dream Catcher Brief');
+    expect(textBrief.stdout).toContain('No dream or durable-memory changes found.');
 
     const verify = await runPsy(cwd, ['verify', '--all', '--no-color']);
     expect(verify.code, verify.stderr).toBe(0);

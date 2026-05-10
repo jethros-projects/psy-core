@@ -63,6 +63,7 @@ npm run build
 For cross-integration checks:
 
 ```bash
+npm run verify:release
 npm run test:e2e:adapters
 npm run test:e2e:integrations
 PSY_GBRAIN_REAL_REPO=/path/to/gbrain npm run test:gbrain:live

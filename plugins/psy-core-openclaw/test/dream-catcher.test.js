@@ -114,3 +114,58 @@ test("tool-observed dream writes update the catcher baseline", async () => {
 
   assert.equal(sent.length, 0);
 });
+
+test("scans default and per-agent workspaces", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-dreams-multi-"));
+  const defaultWorkspace = path.join(rootDir, "main");
+  const researchWorkspace = path.join(rootDir, "research");
+  await fs.mkdir(defaultWorkspace, { recursive: true });
+  await fs.mkdir(researchWorkspace, { recursive: true });
+
+  const { catcher, sent, appConfig } = buildCatcher({ workspaceDir: defaultWorkspace });
+  appConfig.agents.list = [
+    { id: "main", default: true },
+    { id: "research", workspace: researchWorkspace },
+  ];
+
+  await catcher.scanNow();
+  await fs.writeFile(path.join(defaultWorkspace, "DREAMS.md"), "main dream", "utf8");
+  const researchDream = path.join(researchWorkspace, "memory", "dreaming", "research.md");
+  await fs.mkdir(path.dirname(researchDream), { recursive: true });
+  await fs.writeFile(researchDream, "research dream", "utf8");
+  await catcher.scanNow();
+
+  assert.deepEqual(
+    sent.map((envelope) => envelope.memory_path).sort(),
+    ["/memories/DREAMS.md", "/memories/memory/dreaming/research.md"],
+  );
+});
+
+test("dry-run logs dream catcher envelopes without sending", async () => {
+  const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "psy-openclaw-dreams-dry-"));
+  const logs = [];
+  const config = normalizeConfig(
+    {
+      actorId: "alice",
+      dryRun: true,
+      payloadCapture: true,
+      dreamCatcherIntervalMs: 1000,
+    },
+    { HOME: os.homedir() },
+  );
+  const catcher = new OpenClawDreamCatcher({
+    config,
+    logger: { info: (message) => logs.push(message), error() {} },
+    ingest: { send: () => assert.fail("dry-run must not send") },
+    getAppConfig: () => ({ agents: { defaults: { workspace: workspaceDir } } }),
+    env: { HOME: os.homedir() },
+  });
+
+  await catcher.scanNow();
+  await fs.writeFile(path.join(workspaceDir, "DREAMS.md"), "dry dream", "utf8");
+  await catcher.scanNow();
+
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /psy-core-openclaw dream catcher dry-run/);
+  assert.match(logs[0], /DREAMS\.md/);
+});
